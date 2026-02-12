@@ -1,57 +1,81 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
-import matplotlib.pyplot as plt
 import joblib
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_absolute_error
 
+# SETTINGS & PATHS---
+DATA_PATH = "data/training_dataset.geojson"
+MODEL_SAVE_PATH = "price_nest_model.joblib"
+FEATURES_SAVE_PATH = "model_features.joblib"
 
-# 1. Load the dataset
-print("Loading dataset...")
-gdf = gpd.read_file("data/training_dataset.geojson")
+def train_model():
+    print("🚀 Loading and preparing data...")
+    gdf = gpd.read_file(DATA_PATH)
 
-# 2. Prepare Features (X) and Target (y)
-# We exclude 'GEOID' and 'geometry' as they aren't predictive numbers
-features = [
-    "median_income", "median_house_age", "population", 
-    "housing_units", "pop_density", "dist_coast_km", "dist_city_km"
-]
-X = gdf[features]
-y = gdf["median_home_value"]
+    # DATA CLEANING: OUTLIER REMOVAL 
+    lower_limit = gdf['median_home_value'].quantile(0.01)
+    upper_limit = gdf['median_home_value'].quantile(0.99)
+    
+    gdf = gdf[(gdf['median_home_value'] >= lower_limit) & 
+              (gdf['median_home_value'] <= upper_limit)].copy()
+    
+    print(f"✅ Cleaned data: Removed prices below ${lower_limit:,.0f} and above ${upper_limit:,.0f}")
 
-# 3. Split into Training and Testing sets (80% train, 20% test)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    #FEATURE ENGINEERING 
+    # A. Wealth Index: Income relative to house age (Gentrification proxy)
+    gdf['income_per_age'] = gdf['median_income'] / (gdf['median_house_age'] + 1)
+    
+    # B. Crowding Index: Population per housing unit
+    gdf['persons_per_unit'] = gdf['population'] / (gdf['housing_units'] + 1)
+    
+    # C. Density Ratio: How this tract compares to the CA average
+    gdf['relative_density'] = gdf['pop_density'] / gdf['pop_density'].mean()
 
-# 4. Train the Model
-print("Training Random Forest Model...")
-model = RandomForestRegressor(n_estimators=200, random_state=42)
-model.fit(X_train, y_train)
+    # Define the final feature set
+    features = [
+        "median_income", 
+        "median_house_age", 
+        "population", 
+        "housing_units", 
+        "pop_density", 
+        "dist_coast_km", 
+        "dist_city_km",
+        "income_per_age",    # Engineered
+        "persons_per_unit",  # Engineered
+        "relative_density"   # Engineered
+    ]
 
-# Save the trained model to a file
-joblib.dump(model, 'price_nest_model.joblib')
+    X = gdf[features]
+    y = gdf["median_home_value"]
 
-# Save the feature names so the next script knows the exact order
-joblib.dump(features, 'model_features.joblib')
-print("\nModel saved successfully as 'price_nest_model.joblib'")
+    #TRAINING 
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 5. Evaluate
-y_pred = model.predict(X_test)
-print("\n--- Model Performance ---")
-print(f"R² Score: {r2_score(y_test, y_pred):.4f}")
-print(f"Mean Absolute Error: ${mean_absolute_error(y_test, y_pred):,.2f}")
+    print(f"🧠 Training Random Forest on {len(X_train)} samples...")
+    model = RandomForestRegressor(
+        n_estimators=200, 
+        max_depth=15, 
+        random_state=42, 
+        n_jobs=-1 # 
+    )
+    model.fit(X_train, y_train)
 
-# 6. Feature Importance (Which variable mattered most?)
-importances = pd.Series(model.feature_importances_, index=features).sort_values(ascending=False)
-print("\n--- Feature Importance ---")
-print(importances)
+    # EVALUATION 
+    predictions = model.predict(X_test)
+    r2 = r2_score(y_test, predictions)
+    mae = mean_absolute_error(y_test, predictions)
 
-# 7. Quick Visualization of Prediction Accuracy
-plt.figure(figsize=(10, 6))
-plt.scatter(y_test, y_pred, alpha=0.3)
-plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--')
-plt.xlabel("Actual Value")
-plt.ylabel("Predicted Value")
-plt.title("Actual vs Predicted Home Values")
-plt.show()
+    print(f"📊 Model Performance:")
+    print(f"   - R² Score: {r2:.4f}")
+    print(f"   - Mean Absolute Error: ${mae:,.2f}")
+
+    # SAVE ASSETS
+    joblib.dump(model, MODEL_SAVE_PATH)
+    joblib.dump(features, FEATURES_SAVE_PATH)
+    print(f"💾 Model and features saved to disk!")
+
+if __name__ == "__main__":
+    train_model()
