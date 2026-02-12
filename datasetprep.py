@@ -8,13 +8,13 @@ import numpy as np
 import shapely
 from shapely.geometry import Point
 
-# --- CONFIGURATION ---
+#    CONFIGURATION 
 ACS_API_KEY = "94532ff79fc3d87f643d667d1ad4bcee4beb330b" 
 STATE_FIPS = "06"  # California
 CRS_PROJ = "EPSG:3310"  # California Albers (Meters)
 CRS_LATLON = "EPSG:4326"
 
-# --- FILE PATHS ---
+#  FILE PATHS
 DATA_DIR = "data"
 TRACTS_PATH = "tl_2025_06_tract/tl_2025_06_tract.shp" 
 SHORELINE_PATH = f"{DATA_DIR}/shoreline/GSHHS_shp/h/GSHHS_h_L1.shp"
@@ -27,7 +27,7 @@ def download_file(url, dest_path):
         print(f"Downloading {os.path.basename(dest_path)}...")
         urllib.request.urlretrieve(url, dest_path)
 
-# --- 1. LOAD CENSUS TRACTS ---
+#  1. LOAD CENSUS TRACTS 
 print("Loading Census Tracts...")
 if not os.path.exists(TRACTS_PATH):
     raise FileNotFoundError(f"Tracts shapefile not found at {TRACTS_PATH}.")
@@ -37,7 +37,7 @@ tracts = gpd.read_file(TRACTS_PATH).to_crs(CRS_LATLON)
 if "GEOID" not in tracts.columns and "GEOID10" in tracts.columns:
     tracts["GEOID"] = tracts["GEOID10"]
 
-# --- 2. FETCH ACS DATA ---
+# FETCH ACS DATA 
 print("Fetching ACS Data...")
 ACS_VARS = {
     "B25077_001E": "median_home_value",
@@ -67,7 +67,7 @@ acs_df = acs_df[acs_df["median_home_value"] > 0]
 tracts = tracts.merge(acs_df, on="GEOID", how="inner")
 print(f"Merged dataset size: {len(tracts)} tracts")
 
-# --- 3. SPATIAL ENGINEERING: SHORELINE (STABILIZED) ---
+# SPATIAL ENGINEERING: SHORELINE (STABILIZED) 
 print("Processing Shoreline...")
 shoreline_zip = f"{DATA_DIR}/shoreline_gshhg.zip"
 download_file("https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-2.3.7.zip", shoreline_zip)
@@ -113,7 +113,7 @@ else:
         lambda x: shoreline_geom.distance(x) / 1000
     )
 
-# --- 4. SPATIAL ENGINEERING: MAJOR CITIES ---
+# SPATIAL ENGINEERING: MAJOR CITIES 
 cities_data = {
     "city": ["San Francisco", "Los Angeles", "San Diego", "San Jose"],
     "lat": [37.7749, 34.0522, 32.7157, 37.3382],
@@ -131,11 +131,11 @@ def get_nearest_city_dist(point):
 
 tracts_proj["dist_city_km"] = tracts_proj["centroid"].apply(get_nearest_city_dist)
 
-# --- 5. URBANIZATION PROXY ---
+# URBANIZATION PROXY
 tracts_proj["area_sqkm"] = tracts_proj.geometry.area / 10**6
 tracts_proj["pop_density"] = tracts_proj["population"] / tracts_proj["area_sqkm"]
 
-# --- 6. EXPORT ---
+#  EXPORT 
 final_cols = [
     "GEOID", "median_home_value", "median_income", "median_house_age",
     "population", "housing_units", "pop_density", "dist_coast_km", 
