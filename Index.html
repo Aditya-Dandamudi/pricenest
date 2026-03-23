@@ -9,83 +9,53 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <script>tailwind.config = { darkMode: 'class' }</script>
 
     <style>
-        /* --- GLOBAL VARIABLES --- */
         :root { --bg: #f8fafc; --brand-navy: #0B1C3E; --brand-gold: #FDBB11; --text-main: #0f172a; --text-sub: #64748b; }
         body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text-main); }
         
-        /* BACKGROUND & SHELL */
+        /* UI Shell */
         .tech-bg { background-color: #f8fafc; background-image: radial-gradient(#e2e8f0 1px, transparent 1px); background-size: 30px 30px; }
         #map { position: absolute; inset: 0; z-index: -10; transition: opacity 0.3s; }
         .ui-header { position: fixed; top: 0; left: 0; right: 0; z-index: 200; padding: 16px 24px; pointer-events: none; }
         
-        /* GLASS EFFECT */
         .glass { 
-            background: rgba(255, 255, 255, 0.95); 
-            -webkit-backdrop-filter: blur(20px);
-            backdrop-filter: blur(20px); 
+            background: rgba(255, 255, 255, 0.92); 
+            -webkit-backdrop-filter: blur(15px);
+            backdrop-filter: blur(15px); 
             border: 1px solid rgba(255,255,255,1); 
             box-shadow: 0 4px 20px rgba(0,0,0,0.05); 
             border-radius: 12px; 
             pointer-events: auto; 
         }
         
-        /* VIEW ROUTING */
         .view-content { position: absolute; inset: 0; z-index: 150; display: none; padding-top: 90px; overflow-y: auto; }
         .view-content.active { display: block; }
         
-        /* TABS */
         .tab { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; color: #64748b; transition: 0.2s; }
-        .tab:hover { background: rgba(0,0,0,0.05); }
         .tab.active { background: #0B1C3E; color: white; box-shadow: 0 4px 12px rgba(11, 28, 62, 0.2); }
 
-        /* --- HOME LISTING CARDS --- */
-        .property-card { background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; }
-        .property-card:hover { transform: translateY(-5px); box-shadow: 0 20px 50px -10px rgba(0,0,0,0.15); }
-        .card-img-wrap { position: relative; height: 120px; overflow: hidden; background: #1e293b; }
-        .badge { position: absolute; top: 12px; left: 12px; padding: 4px 10px; border-radius: 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .badge-red { background: #dc2626; color: white; }
-        .badge-yellow { background: #FDBB11; color: black; }
-
-        /* --- MAP SCROLLER CSS --- */
+        /* Map UI */
         .property-scroller { position: absolute; top: 90px; left: 24px; bottom: 80px; width: 400px; z-index: 160; overflow-y: auto; scrollbar-width: none; pointer-events: auto; }
-        .property-scroller::-webkit-scrollbar { display: none; }
         .prop-card { background: white; border-radius: 16px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
         .card-img-box { height: 60px; background: #1e293b; position: relative; }
-        .card-badge { position: absolute; top: 12px; left: 12px; background: var(--brand-navy); color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; z-index: 5; }
+        .card-badge { position: absolute; top: 12px; left: 12px; background: var(--brand-navy); color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
         
-        /* SEARCH BOX ON MAP PAGE */
         .search-box { background: white; padding: 12px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; gap: 8px; position: sticky; top: 0; z-index: 10; }
-        .search-box input { flex: 1; border: none; outline: none; font-family: inherit; font-size: 0.9rem; padding: 4px; }
-        .search-box button { background: var(--brand-navy); color: white; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .search-box button:hover { background: #1e3a8a; }
-        
-        /* --- ANALYSIS CSS --- */
-        .ana-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; }
-        .input-row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .input-group { flex: 1; }
-        .input-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: var(--text-main); }
-        .input-group input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; }
-        
-        /* --- LIFEBUDGET CSS --- */
-        .lb-input-wrapper { position: relative; width: 100%; }
-        .lb-input-wrapper span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #64748b; font-weight: 600; }
-        .lb-input { width: 100%; padding: 8px 10px 8px 24px; border: 1px solid #cbd5e1; border-radius: 8px; }
+        .search-box input { flex: 1; border: none; outline: none; font-size: 0.9rem; padding: 4px; }
+
+        /* Components */
         .lb-toggle { flex: 1; padding: 10px; text-align: center; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; transition: 0.2s; }
         .lb-toggle.active { background: #0f172a; color: white; border-color: #0f172a; }
 
-        /* TICKER */
         @keyframes ticker { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; overflow: hidden; background: #0B1C3E; color: white; padding: 10px 0; z-index: 200; box-shadow: 0 -4px 20px rgba(0,0,0,0.1); }
+        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; overflow: hidden; background: #0B1C3E; color: white; padding: 10px 0; z-index: 200; }
         .ticker-move { display: inline-block; white-space: nowrap; animation: ticker 40s linear infinite; }
-        .ticker-item { display: inline-block; padding: 0 2rem; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+        .ticker-item { display: inline-block; padding: 0 2rem; font-size: 12px; font-weight: 700; }
 
-        /* TOAST */
         .toast-container { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
         .toast { background: #0B1C3E; color: white; padding: 12px 24px; border-radius: 50px; font-size: 0.85rem; font-weight: 600; animation: popUp 0.3s ease; }
         @keyframes popUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -94,7 +64,6 @@
 <body>
 
     <div id="toast-container" class="toast-container"></div>
-
     <div id="map"></div>
 
     <header class="ui-header flex justify-between items-center">
@@ -113,35 +82,28 @@
         </nav>
 
         <div class="glass p-2 flex gap-2 items-center pointer-events-auto">
-            <input type="text" id="headerSearch" placeholder="Quick Search..." class="bg-slate-50 px-4 py-2 rounded-lg text-sm outline-none w-48">
-            <button onclick="performSearch('headerSearch')" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase hover:bg-slate-800">Go</button>
+            <input type="text" id="headerSearch" placeholder="Quick Search..." class="bg-slate-50 px-4 py-2 rounded-lg text-sm outline-none w-48" onkeyup="if(event.key==='Enter') performSearch('headerSearch')">
+            <button onclick="performSearch('headerSearch')" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase">Go</button>
         </div>
     </header>
 
     <section id="v-home" class="view-content active tech-bg">
-        <div class="max-w-7xl mx-auto px-6 pb-24">
-            <div class="text-center py-16">
-                <h2 class="text-6xl font-black text-slate-900 tracking-tighter mb-4">
-                    Find Your <span class="text-[#FDBB11]">Stronghold.</span>
-                </h2>
-                <p class="text-slate-500 mb-8 font-medium">Real-time valuation and growth metrics for every listing.</p>
-                <div class="max-w-xl mx-auto glass p-2 flex gap-2">
-                    <input type="text" id="mainSearch" placeholder="Enter City, Zip, or Address..." class="flex-1 bg-slate-50 px-6 py-4 rounded-xl text-slate-800 font-bold outline-none focus:ring-2 focus:ring-yellow-400 transition">
-                    <button onclick="performSearch('mainSearch')" class="bg-yellow-400 text-slate-900 px-8 rounded-xl font-black uppercase text-sm tracking-widest hover:bg-yellow-500 transition active:scale-95">Search</button>
-                </div>
-            </div>    
-            </div> 
+        <div class="max-w-7xl mx-auto px-6 pb-24 text-center py-16">
+            <h2 class="text-6xl font-black text-slate-900 tracking-tighter mb-4">Find Your <span class="text-[#FDBB11]">Stronghold.</span></h2>
+            <p class="text-slate-500 mb-8 font-medium">Real-time valuation and growth metrics for every listing.</p>
+            <div class="max-w-xl mx-auto glass p-2 flex gap-2">
+                <input type="text" id="mainSearch" placeholder="Enter City, Zip, or Address..." class="flex-1 bg-slate-50 px-6 py-4 rounded-xl font-bold outline-none" onkeyup="if(event.key==='Enter') performSearch('mainSearch')">
+                <button onclick="performSearch('mainSearch')" class="bg-yellow-400 text-slate-900 px-8 rounded-xl font-black uppercase text-sm">Search</button>
+            </div>
         </div>
     </section>
 
     <section id="v-map" class="view-content bg-transparent pointer-events-none">
         <div class="property-scroller pointer-events-auto">
             <div class="search-box">
-                <svg width="20" height="20" fill="none" stroke="#64748b" stroke-width="2" viewBox="0 0 24 24" style="margin-top:2px;"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                <input type="text" id="searchInput" placeholder="Search any specific address..." onkeyup="triggerSearch(event)">
-                <button onclick="executeSearch()">Search</button>
+                <input type="text" id="searchInput" placeholder="Search address..." onkeyup="if(event.key==='Enter') executeSearch()">
+                <button onclick="executeSearch()" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs">Search</button>
             </div>
-            
             <div id="propertyCardsContainer"></div>
         </div>
     </section>
@@ -150,12 +112,12 @@
         <div class="max-w-5xl mx-auto px-6 pb-24 pt-10">
             <h2 class="text-4xl font-black text-slate-900 mb-8">Pipeline <span class="text-[#FDBB11]">Tracker</span></h2>
             <div class="grid grid-cols-2 gap-6 mb-8">
-                <div class="glass p-8 text-center"><h3 class="text-xs font-black uppercase text-slate-400">Total Pipeline</h3><span class="text-5xl font-black text-slate-800" id="total-value">$0</span></div>
+                <div class="glass p-8 text-center"><h3 class="text-xs font-black uppercase text-slate-400">Total Value</h3><span class="text-5xl font-black text-slate-800" id="total-value">$0</span></div>
                 <div class="glass p-6 h-48"><canvas id="pipelineChart"></canvas></div>
             </div>
             <form id="lead-form" class="glass p-4 flex gap-3" onsubmit="addLead(event)">
-                <input type="text" id="input-client" placeholder="Client Name" required class="flex-2 bg-slate-50 px-4 py-2 rounded-lg border outline-none">
-                <input type="number" id="input-value" placeholder="Value ($)" required class="flex-1 bg-slate-50 px-4 py-2 rounded-lg border outline-none">
+                <input type="text" id="input-client" placeholder="Property Label" required class="flex-1 bg-slate-50 px-4 py-2 rounded-lg border">
+                <input type="number" id="input-value" placeholder="Price ($)" required class="w-48 bg-slate-50 px-4 py-2 rounded-lg border">
                 <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold text-xs uppercase">Add</button>
             </form>
             <div class="glass mt-6 overflow-hidden"><table class="w-full text-left"><tbody id="leads-body"></tbody></table></div>
@@ -165,24 +127,46 @@
     <section id="v-analysis" class="view-content tech-bg">
         <div class="max-w-6xl mx-auto px-6 pb-24 pt-10 flex gap-6">
             <div class="w-1/3 glass p-6 space-y-4">
-                <h2 class="text-xl font-bold">Smart Analyzer</h2>
-                <div class="ana-card shadow-sm">
-                    <div class="input-row"><div class="input-group"><label>Home Price</label><input type="text" id="ana-price" value="450000" oninput="anaRunCalc()"></div><div class="input-group"><label>Similar Rent</label><input type="number" id="ana-rent" value="2600" oninput="anaRunCalc()"></div></div>
-                    <div><label class="text-xs font-bold">Horizon: <span id="ana-disp-years" class="text-blue-600">7 Years</span></label><input type="range" id="ana-years" min="2" max="30" value="7" oninput="document.getElementById('ana-disp-years').innerText=this.value+' Years'; anaRunCalc();" class="w-full"></div>
+                <h2 class="text-xl font-bold">AI Smart Analyzer</h2>
+                
+                <div class="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Property Specs</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="text-[10px] font-bold">SQFT</label><input type="number" id="ana-sqft" value="1800" class="w-full border-b text-sm outline-none"></div>
+                        <div><label class="text-[10px] font-bold">CONDITION</label>
+                            <select id="ana-cond" class="w-full border-b text-sm outline-none bg-white">
+                                <option value="Fixer">Fixer</option>
+                                <option value="Avg" selected>Average</option>
+                                <option value="Good">Good</option>
+                                <option value="Mint">Mint</option>
+                            </select>
+                        </div>
+                        <div><label class="text-[10px] font-bold">BEDS</label><input type="number" id="ana-beds" value="3" class="w-full border-b text-sm outline-none"></div>
+                        <div><label class="text-[10px] font-bold">BATHS</label><input type="number" id="ana-baths" value="2" step="0.5" class="w-full border-b text-sm outline-none"></div>
+                    </div>
+                    <button onclick="updateValuation()" class="w-full mt-2 bg-slate-900 text-white py-2 rounded-lg font-bold text-xs uppercase hover:bg-black transition">Recalculate Price</button>
                 </div>
-                <div class="ana-card shadow-sm">
-                    <div class="input-row"><div class="input-group"><label>Down Pmt (%)</label><input type="number" id="ana-down" value="20" oninput="anaRunCalc()"></div><div class="input-group"><label>Int. Rate (%)</label><input type="number" id="ana-rate" value="6.5" oninput="anaRunCalc()"></div></div>
-                    <div class="input-row"><div class="input-group"><label>Prop Tax (%)</label><input type="number" id="ana-tax" value="1.2" oninput="anaRunCalc()"></div><div class="input-group"><label>Maint/mo ($)</label><input type="number" id="ana-maint" value="450" oninput="anaRunCalc()"></div></div>
+
+                <div class="p-4 bg-white rounded-xl border border-slate-200">
+                    <label class="block text-xs font-bold mb-1">AI ESTIMATED PRICE</label>
+                    <input type="text" id="ana-price" value="450000" oninput="anaRunCalc()" class="w-full text-2xl font-black text-blue-600 outline-none">
+                    <p id="ana-range" class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Confidence Range: Pending...</p>
                 </div>
+                <div class="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+                    <div class="flex gap-2">
+                        <div class="flex-1"><label class="text-[10px] font-bold">DOWN %</label><input type="number" id="ana-down" value="20" oninput="anaRunCalc()" class="w-full border-b"></div>
+                        <div class="flex-1"><label class="text-[10px] font-bold">RATE %</label><input type="number" id="ana-rate" value="6.5" oninput="anaRunCalc()" class="w-full border-b"></div>
+                    </div>
+                    <div><label class="text-[10px] font-bold">MONTHLY RENT COMP ($)</label><input type="number" id="ana-rent" value="2800" oninput="anaRunCalc()" class="w-full border-b"></div>
+                </div>
+                <div><label class="text-xs font-bold">HORIZON: <span id="ana-disp-years">7 Years</span></label><input type="range" id="ana-years" min="2" max="30" value="7" oninput="document.getElementById('ana-disp-years').innerText=this.value+' Years'; anaRunCalc();" class="w-full"></div>
             </div>
             <div class="flex-1 space-y-4">
                 <div class="flex gap-4">
-                    <div class="glass flex-1 p-6 text-center border-t-4 border-blue-500"><div class="text-xs font-bold text-slate-500 uppercase">Avg Unrecoverable (Buy)</div><div class="text-3xl font-black mt-2" id="ana-out-buy">$0</div></div>
-                    <div class="glass flex-1 p-6 text-center border-t-4 border-red-500"><div class="text-xs font-bold text-slate-500 uppercase">Avg Net Cost (Rent)</div><div class="text-3xl font-black mt-2" id="ana-out-rent">$0</div></div>
+                    <div class="glass flex-1 p-6 text-center border-t-4 border-blue-500"><div class="text-xs font-bold text-slate-500 uppercase">Avg Cost (Buy)</div><div class="text-3xl font-black mt-2" id="ana-out-buy">$0</div></div>
+                    <div class="glass flex-1 p-6 text-center border-t-4 border-red-500"><div class="text-xs font-bold text-slate-500 uppercase">Avg Cost (Rent)</div><div class="text-3xl font-black mt-2" id="ana-out-rent">$0</div></div>
                 </div>
-                <div class="glass p-6 h-[400px]">
-                    <canvas id="ana-mainChart"></canvas>
-                </div>
+                <div class="glass p-6 h-[400px]"><canvas id="ana-mainChart"></canvas></div>
             </div>
         </div>
     </section>
@@ -190,33 +174,24 @@
     <section id="v-budget" class="view-content tech-bg">
         <div class="max-w-6xl mx-auto px-6 pb-24 pt-10 grid grid-cols-12 gap-8">
             <div class="col-span-5 space-y-6">
-                <div class="glass p-6 bg-blue-50"><label class="text-sm font-bold text-blue-900 block mb-2">Monthly Net Income</label><div class="lb-input-wrapper"><span>$</span><input type="number" id="lb-income" value="6500" class="lb-input" oninput="lbRunBudget()"></div></div>
-                
+                <div class="glass p-6 bg-blue-50"><label class="text-sm font-bold text-blue-900 block mb-2">Monthly Net Income</label><input type="number" id="lb-income" value="6500" class="w-full p-3 rounded-lg border text-xl font-bold" oninput="lbRunBudget()"></div>
                 <div class="glass p-6">
-                    <h3 class="font-bold mb-4">Housing Strategy</h3>
-                    <div class="flex mb-4"><div id="lb-btn-rent" class="lb-toggle active rounded-l-lg" onclick="lbSetMode('rent')">Renting</div><div id="lb-btn-buy" class="lb-toggle rounded-r-lg" onclick="lbSetMode('buy')">Buying</div></div>
-                    <div id="lb-sec-rent" class="space-y-3"><div class="flex justify-between items-center"><label class="text-sm font-semibold">Monthly Rent</label><div class="lb-input-wrapper w-32"><span>$</span><input type="number" id="lb-rent" value="2200" class="lb-input" oninput="lbRunBudget()"></div></div></div>
-                    <div id="lb-sec-buy" class="space-y-3 hidden"><div class="flex justify-between items-center"><label class="text-sm font-semibold">Mortgage (P&I)</label><div class="lb-input-wrapper w-32"><span>$</span><input type="number" id="lb-mortgage" value="2800" class="lb-input" oninput="lbRunBudget()"></div></div></div>
+                    <h3 class="font-bold mb-4">Housing Cost</h3>
+                    <div class="flex mb-4"><div id="lb-btn-rent" class="lb-toggle active rounded-l-lg" onclick="lbSetMode('rent')">Rent</div><div id="lb-btn-buy" class="lb-toggle rounded-r-lg" onclick="lbSetMode('buy')">Buy</div></div>
+                    <input type="number" id="lb-housing" value="2200" class="w-full p-3 rounded-lg border text-xl font-bold" oninput="lbRunBudget()">
                 </div>
-
-                <div class="glass p-6">
-                    <h3 class="font-bold mb-4">Lifestyle</h3>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center"><label class="text-sm font-semibold">Food/Dining</label><div class="lb-input-wrapper w-32"><span>$</span><input type="number" id="lb-food" value="800" class="lb-input" oninput="lbRunBudget()"></div></div>
-                        <div class="flex justify-between items-center"><label class="text-sm font-semibold">Savings</label><div class="lb-input-wrapper w-32"><span>$</span><input type="number" id="lb-savings" value="600" class="lb-input" oninput="lbRunBudget()"></div></div>
-                    </div>
+                <div class="glass p-6 space-y-4">
+                    <div class="flex justify-between items-center"><label class="font-bold">Lifestyle/Food</label><input type="number" id="lb-food" value="1200" class="w-24 p-2 border rounded" oninput="lbRunBudget()"></div>
+                    <div class="flex justify-between items-center"><label class="font-bold">Savings/Invest</label><input type="number" id="lb-savings" value="1000" class="w-24 p-2 border rounded" oninput="lbRunBudget()"></div>
                 </div>
             </div>
-
             <div class="col-span-7 flex flex-col gap-6">
                 <div class="grid grid-cols-3 gap-4">
-                    <div class="glass p-4 text-center"><div class="text-xs font-bold text-slate-400 uppercase">Income</div><div class="text-xl font-black mt-1" id="lb-out-inc">$0</div></div>
-                    <div class="glass p-4 text-center"><div class="text-xs font-bold text-slate-400 uppercase">Expenses</div><div class="text-xl font-black mt-1" id="lb-out-exp">$0</div></div>
-                    <div class="glass p-4 text-center border-b-4 border-emerald-400"><div class="text-xs font-bold text-slate-400 uppercase">Leftover</div><div class="text-xl font-black text-emerald-600 mt-1" id="lb-out-left">$0</div></div>
+                    <div class="glass p-4 text-center"><div class="text-xs font-bold text-slate-400">INCOME</div><div id="lb-out-inc" class="text-xl font-black">$0</div></div>
+                    <div class="glass p-4 text-center"><div class="text-xs font-bold text-slate-400">EXPENSES</div><div id="lb-out-exp" class="text-xl font-black">$0</div></div>
+                    <div class="glass p-4 text-center border-b-4 border-emerald-500"><div class="text-xs font-bold text-slate-400">SURPLUS</div><div id="lb-out-left" class="text-xl font-black text-emerald-600">$0</div></div>
                 </div>
-                <div class="glass flex-1 p-6 relative min-h-[400px] flex justify-center items-center">
-                    <canvas id="lb-budgetChart"></canvas>
-                </div>
+                <div class="glass flex-1 p-6 flex justify-center items-center"><canvas id="lb-budgetChart"></canvas></div>
             </div>
         </div>
     </section>
@@ -224,19 +199,18 @@
     <section id="v-creators" class="view-content tech-bg">
         <div class="max-w-6xl mx-auto px-10 pt-20 text-center">
             <h2 class="text-5xl font-black text-slate-800 tracking-tighter mb-12">The <span class="text-[#FDBB11]">Architects.</span></h2>
-            
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div class="glass p-8 hover:-translate-y-2 transition duration-300">
-                    <h3 class="text-2xl font-black text-slate-800 mb-2">Saketh Patibandla</h3>
-                    <p class="text-slate-500 mb-4">System Design & Data.</p>
+                <div class="glass p-8">
+                    <h3 class="text-2xl font-black text-slate-800">Saketh Patibandla</h3>
+                    <p class="text-slate-500">Email: saketh.patibandla@gmail.com Number: (916)-622-7305</p>
                 </div>
-                <div class="glass p-8 hover:-translate-y-2 transition duration-300">
-                    <h3 class="text-2xl font-black text-slate-800 mb-2">Jake Beater</h3>
-                    <p class="text-slate-500 mb-4">Algorithmic Efficiency.</p>
+                <div class="glass p-8">
+                    <h3 class="text-2xl font-black text-slate-800">Jake Beater</h3>
+                    <p class="text-slate-500">Email: <br> jake.beater@gmail.com <br>Number: (916)-757-5963</p>
                 </div>
-                <div class="glass p-8 hover:-translate-y-2 transition duration-300">
-                    <h3 class="text-2xl font-black text-slate-800 mb-2">Aditya Dandamudi</h3>
-                    <p class="text-slate-500 mb-4">Frontend Integration.</p>
+                <div class="glass p-8">
+                    <h3 class="text-2xl font-black text-slate-800">Aditya Dandamudi</h3>
+                    <p class="text-slate-500">Email: aditya.s.dandamudi@gmail.com Number: (916)-477-4996</p>
                 </div>
             </div>
         </div>
@@ -248,26 +222,24 @@
     </div></div>
 
     <script>
-        // --- GLOBAL STATE ---
-        let map;
-        let mapPinsLayer;
-        
-        // Emptied so it defaults to blank
-        const mockProps = [];
+        // --- GLOBALS ---
+        let map, mapPins;
+        let anaChart, lbChart, trackChart;
+        let mockProps = [];
+        let leads = [{ client: "Demo Property", value: 450000 }];
+        let currentActiveAddress = ""; // Tracks the current property for recalculation
 
         window.onload = function() {
             initMap();
-            initTrackerChart();
-            anaRunCalc(); 
-            lbRunBudget(); 
-            showToast("System Online. Welcome to PriceNest.", "info");
+            initCharts();
+            renderLeads();
+            showToast("PriceNest Engine: Online", "info");
         };
 
-        // --- 1. CORE SHELL LOGIC ---
+        // --- CORE NAVIGATION ---
         function showTab(tabId) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             if(document.getElementById('t-' + tabId)) document.getElementById('t-' + tabId).classList.add('active');
-
             document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
             
             const mapDiv = document.getElementById('map');
@@ -286,101 +258,39 @@
             setTimeout(() => el.remove(), 3000);
         }
 
-        function performSearch(id) {
-            const val = document.getElementById(id).value;
-            if(val) showToast(`Searching market for: ${val}`);
-        }
-
-        function toggleFilter(filter, btn) {
-            btn.classList.toggle('opacity-50');
-            showToast(`Filter toggled: ${filter}`);
-        }
-
-        function locateProperty(lat, lng, address, price) {
-            showTab('map');
-            map.flyTo([lat, lng], 15, { duration: 1.5 });
-            showToast("Locating " + address + "...");
-        }
-
-        // --- 2. MAP APP LOGIC ---
-        function initMap() {
-            map = L.map('map', {zoomControl: false}).setView([37.7749, -122.4194], 13);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
-            mapPinsLayer = L.layerGroup().addTo(map);
-            renderMapCards(mockProps);
-        }
-
-        function renderMapCards(dataArray) {
-            const container = document.getElementById('propertyCardsContainer');
-            container.innerHTML = ''; mapPinsLayer.clearLayers();
-            const icon = L.divIcon({ className: 'custom-pin', html: `<div style="background:#0B1C3E; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`});
-
-            dataArray.forEach(p => {
-                const priceDisplay = p.price ? `$${p.price.toLocaleString()}` : '<span class="text-blue-600 text-sm italic">Pending AI Valuation</span>';
-                const popupPrice = p.price ? `$${(p.price / 1000000).toFixed(1)}M` : 'Est. Pending';
-
-                L.marker([p.lat, p.lng], {icon: icon}).addTo(mapPinsLayer).bindPopup(`<b>${popupPrice}</b><br/>${p.addr}`);
-                
-                const card = document.createElement('div'); card.className = 'prop-card';
-                card.innerHTML = `
-                    <div class="card-img-box"><div class="card-badge">Target Property</div></div>
-                    <div class="p-4">
-                        <h3 class="font-bold text-lg text-slate-900 mb-1">${priceDisplay}</h3>
-                        <p class="text-sm text-slate-500">${p.addr}</p>
-                        <button onclick="sendToAnalysis(${p.price || 0}, ${p.rent || 3000}, '${p.addr}')" class="mt-3 w-full bg-slate-900 text-white py-2 rounded-lg text-xs font-bold uppercase hover:bg-slate-800 transition">Analyze Deal</button>
-                    </div>`;
-                container.appendChild(card);
-            });
-        }
-
-        function triggerSearch(event) { if(event.key === 'Enter') executeSearch(); }
-        async function executeSearch() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (query === "") {
-                renderMapCards(mockProps);
-                map.flyTo([37.7749, -122.4194], 13);
+        // --- BACKEND AI INTEGRATION ---
+        function performSearch(inputId) {
+            const query = document.getElementById(inputId).value;
+            if (query.trim() === "") {
+                showToast("Please enter an address");
                 return;
             }
-            
-            showToast(`Searching for: ${query}`);
-            const queryLower = query.toLowerCase();
-            let filtered = mockProps.filter(p => p.addr.toLowerCase().includes(queryLower));
-            
-            if (filtered.length === 0) {
-                 try {
-                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
-                    const geoData = await response.json();
-                    let realLat = 37.7749; let realLng = -122.4194;
-                    if (geoData && geoData.length > 0) {
-                        realLat = parseFloat(geoData[0].lat); realLng = parseFloat(geoData[0].lon);
-                    }
-                    // Setup simProp with null price for AI valuation
-                    const simProp = { id: Date.now(), addr: query, price: null, rent: 4500, lat: realLat, lng: realLng };
-                    mockProps.push(simProp);
-                    filtered = [simProp];
-                    map.flyTo([realLat, realLng], 14);
-                 } catch (e) {
-                    showToast("Search failed. Check connection.");
-                 }
-            } else {
-                map.flyTo([filtered[0].lat, filtered[0].lng], 14);
-            }
-            renderMapCards(filtered);
+            sendToAnalysis(query);
         }
 
-        async function fetchAIValuation(address, sqft, beds, baths) {
-            showToast(`Asking AI Engine to value: ${address}...`);
+        function updateValuation() {
+            if (!currentActiveAddress) {
+                showToast("Please search for a property first!");
+                return;
+            }
+            const sqft = document.getElementById('ana-sqft').value;
+            const beds = document.getElementById('ana-beds').value;
+            const baths = document.getElementById('ana-baths').value;
+            const cond = document.getElementById('ana-cond').value;
             
+            fetchAIValuation(currentActiveAddress, sqft, beds, baths, cond);
+        }
+
+        async function fetchAIValuation(address, sqft, beds, baths, cond) {
+            showToast(`AI is analyzing specs for ${address}...`);
             const priceInput = document.getElementById('ana-price');
-            const originalValue = priceInput.value;
-            priceInput.value = "Analyzing..."; 
-            priceInput.disabled = true;
+            const rangeDisplay = document.getElementById('ana-range');
+            
+            priceInput.value = "Estimating...";
+            rangeDisplay.innerText = "Calculating range...";
 
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000); 
-
-                const response = await fetch("http://127.0.0.1:8000/predict", {
+                const response = await fetch("/predict", { 
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -388,180 +298,183 @@
                         sqft: sqft || 1800,
                         beds: beds || 3,
                         baths: baths || 2.0,
-                        condition: "Avg"
-                    }),
-                    signal: controller.signal
+                        condition: cond || "Avg"
+                    })
                 });
 
-                clearTimeout(timeoutId);
-
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-                const aiData = await response.json();
+                const data = await response.json();
                 
-                priceInput.value = aiData.valuation.estimated_value;
-                anaRunCalc();
-                showToast(`AI Valuation Complete: $${aiData.valuation.estimated_value.toLocaleString()}`);
-
-            } catch (error) {
-                console.error("FastAPI Error:", error);
-                priceInput.value = originalValue; 
-                
-                if (error.name === 'AbortError') {
-                    showToast("Error: AI Backend timed out. Is it running?");
+                if (response.ok && data.status === "success") {
+                    priceInput.value = data.valuation.estimated_value;
+                    
+                    const formatter = new Intl.NumberFormat('en-US', {
+                        style: 'currency', currency: 'USD', maximumFractionDigits: 0
+                    });
+                    
+                    rangeDisplay.innerText = `Confidence Range: ${formatter.format(data.valuation.range_low)} — ${formatter.format(data.valuation.range_high)}`;
+                    
+                    anaRunCalc();
+                    showToast(`Valuation Complete: ${formatter.format(data.valuation.estimated_value)}`);
                 } else {
-                    showToast("Error: Could not reach Python AI Backend.");
+                    throw new Error(data.error || "Backend Failed");
                 }
-            } finally {
-                priceInput.disabled = false; 
+            } catch (err) {
+                console.error(err);
+                priceInput.value = "450000";
+                rangeDisplay.innerText = "Range unavailable";
+                showToast(`Error: ${err.message}`);
+                anaRunCalc(); 
             }
         }
 
-        function sendToAnalysis(price, rent, address) {
-            document.getElementById('ana-rent').value = rent;
+        // --- MAP LOGIC ---
+        function initMap() {
+            map = L.map('map', {zoomControl: false}).setView([38.7468, -121.2137], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
+            mapPins = L.layerGroup().addTo(map);
+        }
+
+        async function executeSearch() {
+            const query = document.getElementById('searchInput').value;
+            if(!query) return;
+            
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+                const data = await res.json();
+                if(data.length > 0) {
+                    const {lat, lon, display_name} = data[0];
+                    const p = { addr: display_name, lat: parseFloat(lat), lng: parseFloat(lon), price: null };
+                    map.flyTo([lat, lon], 14);
+                    renderMapCard(p);
+                }
+            } catch(e) { showToast("Search Error"); }
+        }
+
+        function renderMapCard(p) {
+            const container = document.getElementById('propertyCardsContainer');
+            container.innerHTML = `
+                <div class="prop-card">
+                    <div class="card-img-box"><div class="card-badge">Current Selection</div></div>
+                    <div class="p-4">
+                        <p class="text-xs font-bold text-slate-400 mb-1">SELECTED ADDRESS</p>
+                        <p class="text-sm font-bold text-slate-800 mb-4">${p.addr}</p>
+                        <button onclick="sendToAnalysis('${p.addr}')" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-xs uppercase hover:bg-black transition">Run AI Valuation</button>
+                    </div>
+                </div>`;
+            mapPins.clearLayers();
+            L.marker([p.lat, p.lng]).addTo(mapPins);
+        }
+
+        function sendToAnalysis(addr) {
+            currentActiveAddress = addr;
             showTab('analysis');
-            fetchAIValuation(address);
+            updateValuation();
         }
 
-        // --- 3. TRACKER APP LOGIC ---
-        let trackChart;
-        let leads = [{ client: "Mission St Deal", value: 850000 }];
-
-        function initTrackerChart() {
-            trackChart = new Chart(document.getElementById('pipelineChart').getContext('2d'), { 
-                type: 'doughnut', 
-                data: { labels: ['Pipeline'], datasets: [{ data: [1], backgroundColor: ['#0B1C3E'], borderWidth: 0 }] }, 
-                options: { responsive: true, maintainAspectRatio: false, cutout: '75%' } 
-            });
-            renderLeads();
-        }
-
+        // --- TRACKER LOGIC ---
         function renderLeads() {
             const tbody = document.getElementById('leads-body');
-            const totalValue = leads.reduce((sum, l) => sum + parseInt(l.value), 0);
-            document.getElementById('total-value').innerText = "$" + totalValue.toLocaleString();
+            const total = leads.reduce((s, l) => s + parseInt(l.value), 0);
+            document.getElementById('total-value').innerText = "$" + total.toLocaleString();
             
-            let rowsHtml = '';
-            leads.forEach((l, i) => {
-                rowsHtml += `
-                <tr class="border-b border-slate-100 hover:bg-slate-50 transition duration-200">
+            tbody.innerHTML = leads.map((l, i) => `
+                <tr class="border-b border-slate-100">
                     <td class="p-4 font-bold text-slate-800">${l.client}</td>
                     <td class="p-4 font-bold text-blue-600">$${parseInt(l.value).toLocaleString()}</td>
-                    <td class="p-4 text-right">
-                        <button onclick="deleteLead(${i})" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded-md text-xs font-bold transition">Delete</button>
-                    </td>
-                </tr>`;
-            });
-            
-            tbody.innerHTML = rowsHtml;
+                    <td class="p-4 text-right"><button onclick="deleteLead(${i})" class="text-red-500 font-bold text-xs">REMOVE</button></td>
+                </tr>`).join('');
 
-            if (trackChart) {
+            if(trackChart) {
                 trackChart.data.labels = leads.map(l => l.client);
-                trackChart.data.datasets[0].data = leads.map(l => parseInt(l.value));
-                trackChart.data.datasets[0].backgroundColor = leads.map((_, i) => ['#0B1C3E', '#3b82f6', '#FDBB11', '#10b981', '#ef4444'][i % 5]);
-                trackChart.update(); 
+                trackChart.data.datasets[0].data = leads.map(l => l.value);
+                trackChart.update();
             }
         }
 
-        function addLead(e) { 
-            e.preventDefault(); 
-            const clientInput = document.getElementById('input-client').value.trim();
-            const valueInput = document.getElementById('input-value').value;
-            
-            if(clientInput && valueInput) {
-                leads.push({ client: clientInput, value: valueInput }); 
-                renderLeads(); 
-                e.target.reset(); 
-                showToast(`Added ${clientInput} to pipeline.`);
-            }
-        }
-
-        function deleteLead(index) {
-            leads.splice(index, 1);
+        function addLead(e) {
+            e.preventDefault();
+            leads.push({ client: document.getElementById('input-client').value, value: document.getElementById('input-value').value });
             renderLeads();
+            e.target.reset();
         }
 
-        // --- 4. PRO ANALYSIS APP LOGIC ---
-        let anaChart;
+        function deleteLead(i) { leads.splice(i, 1); renderLeads(); }
+
+        // --- ANALYSIS & BUDGET CALCS ---
+        function initCharts() {
+            trackChart = new Chart(document.getElementById('pipelineChart'), {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#0B1C3E', '#FDBB11', '#3b82f6', '#10b981'] }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
+            });
+
+            anaChart = new Chart(document.getElementById('ana-mainChart'), {
+                type: 'line',
+                data: { labels: [], datasets: [
+                    { label: 'Rent Cost', borderColor: '#ef4444', data: [], fill: false, tension: 0.3 },
+                    { label: 'Buy Cost', borderColor: '#3b82f6', data: [], fill: false, tension: 0.3 }
+                ]},
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            lbChart = new Chart(document.getElementById('lb-budgetChart'), {
+                type: 'polarArea',
+                data: { labels: ['Housing', 'Lifestyle', 'Savings'], datasets: [{ data: [2200, 1200, 1000], backgroundColor: ['#3b82f6', '#FDBB11', '#10b981'] }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            anaRunCalc();
+            lbRunBudget();
+        }
 
         function anaRunCalc() {
             const price = parseFloat(document.getElementById('ana-price').value) || 0;
             const rent = parseFloat(document.getElementById('ana-rent').value) || 0;
-            const yrs = parseInt(document.getElementById('ana-years').value) || 1;
-            
-            let buyCost = (price * 0.05) + (price * 0.012 * yrs); 
-            let rentCost = rent * 12 * yrs;
-            
-            document.getElementById('ana-out-buy').innerText = "$" + Math.round(buyCost / (yrs * 12)).toLocaleString();
-            document.getElementById('ana-out-rent').innerText = "$" + Math.round(rentCost / (yrs * 12)).toLocaleString();
+            const yrs = parseInt(document.getElementById('ana-years').value);
+            const down = (parseFloat(document.getElementById('ana-down').value)/100) * price;
+            const rate = (parseFloat(document.getElementById('ana-rate').value)/100)/12;
 
-            const labels = Array.from({length: yrs}, (_, i) => `Yr ${i+1}`);
-            const dataR = labels.map((_, i) => rent * 12 * (i+1));
-            const dataB = labels.map((_, i) => buyCost * ((i+1)/yrs));
-
-            if (anaChart) {
-                anaChart.data.labels = labels;
-                anaChart.data.datasets[0].data = dataR;
-                anaChart.data.datasets[1].data = dataB;
-                anaChart.update();
-            } else {
-                anaChart = new Chart(document.getElementById('ana-mainChart').getContext('2d'), { 
-                    type: 'line', 
-                    data: { 
-                        labels, 
-                        datasets: [
-                            { label: 'Cumulative Rent', data: dataR, borderColor: '#ef4444', tension: 0.3, fill: true, backgroundColor: 'rgba(239, 68, 68, 0.1)' }, 
-                            { label: 'Cumulative Buy Cost', data: dataB, borderColor: '#3b82f6', tension: 0.3, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.1)' }
-                        ] 
-                    }, 
-                    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } } 
-                });
+            const n = 360;
+            let monthlyP = 0;
+            if (price > 0 && rate > 0) {
+                 monthlyP = (price - down) * (rate * Math.pow(1+rate, n)) / (Math.pow(1+rate, n)-1);
             }
-        }
+            
+            let rentData = [], buyData = [], labels = [];
+            for(let i=1; i<=yrs; i++) {
+                labels.push(`Yr ${i}`);
+                rentData.push(rent * 12 * i);
+                buyData.push(down + (monthlyP * 12 * i) + (price * 0.02 * i)); // Includes tax/maint estimate
+            }
 
-        // --- 5. LIFEBUDGET APP LOGIC ---
-        let lbMode = 'rent'; 
-        let lbChart;
+            document.getElementById('ana-out-buy').innerText = "$" + Math.round((buyData[yrs-1])/(yrs*12)).toLocaleString();
+            document.getElementById('ana-out-rent').innerText = "$" + Math.round((rentData[yrs-1])/(yrs*12)).toLocaleString();
 
-        function lbSetMode(mode) { 
-            lbMode = mode; 
-            document.getElementById('lb-btn-rent').classList.toggle('active', mode==='rent');
-            document.getElementById('lb-btn-buy').classList.toggle('active', mode==='buy');
-            document.getElementById('lb-sec-rent').classList.toggle('hidden', mode==='buy');
-            document.getElementById('lb-sec-buy').classList.toggle('hidden', mode==='rent');
-            lbRunBudget();
+            anaChart.data.labels = labels;
+            anaChart.data.datasets[0].data = rentData;
+            anaChart.data.datasets[1].data = buyData;
+            anaChart.update();
         }
 
         function lbRunBudget() {
             const inc = parseFloat(document.getElementById('lb-income').value) || 0;
-            const house = lbMode === 'rent' ? parseFloat(document.getElementById('lb-rent').value) : parseFloat(document.getElementById('lb-mortgage').value) || 0;
-            const life = (parseFloat(document.getElementById('lb-food').value) || 0) + (parseFloat(document.getElementById('lb-savings').value) || 0);
-            const exp = house + life; 
-            const left = inc - exp;
+            const house = parseFloat(document.getElementById('lb-housing').value) || 0;
+            const food = parseFloat(document.getElementById('lb-food').value) || 0;
+            const save = parseFloat(document.getElementById('lb-savings').value) || 0;
 
-            document.getElementById('lb-out-inc').innerText = "$" + inc.toLocaleString(); 
-            document.getElementById('lb-out-exp').innerText = "$" + exp.toLocaleString(); 
-            document.getElementById('lb-out-left').innerText = "$" + left.toLocaleString();
+            const exp = house + food + save;
+            document.getElementById('lb-out-inc').innerText = "$" + inc.toLocaleString();
+            document.getElementById('lb-out-exp').innerText = "$" + exp.toLocaleString();
+            document.getElementById('lb-out-left').innerText = "$" + (inc - exp).toLocaleString();
 
-            const chartData = [house, life, left > 0 ? left : 0];
+            lbChart.data.datasets[0].data = [house, food, save];
+            lbChart.update();
+        }
 
-            if (lbChart) {
-                lbChart.data.datasets[0].data = chartData;
-                lbChart.update();
-            } else {
-                lbChart = new Chart(document.getElementById('lb-budgetChart').getContext('2d'), { 
-                    type: 'polarArea', 
-                    data: { 
-                        labels: ['Housing', 'Lifestyle', 'Leftover'], 
-                        datasets: [{ 
-                            data: chartData, 
-                            backgroundColor: ['rgba(59, 130, 246, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(16, 185, 129, 0.8)'],
-                            borderWidth: 0
-                        }] 
-                    }, 
-                    options: { responsive: true, maintainAspectRatio: false }
-                });
-            }
+        function lbSetMode(m) {
+            document.getElementById('lb-btn-rent').className = m==='rent' ? 'lb-toggle active rounded-l-lg' : 'lb-toggle rounded-l-lg';
+            document.getElementById('lb-btn-buy').className = m==='buy' ? 'lb-toggle active rounded-r-lg' : 'lb-toggle rounded-r-lg';
+            showToast(`Housing Mode: ${m.toUpperCase()}`);
         }
     </script>
 </body>
