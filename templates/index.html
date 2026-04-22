@@ -133,6 +133,102 @@
         .score-ring { width:54px; height:54px; border-radius:50%; display:flex; align-items:center; justify-content:center;
             font-size:17px; font-weight:900; color:white; flex-shrink:0;
             box-shadow:0 0 0 3px rgba(255,255,255,0.08); }
+
+        /* ── Dark mode toggle button ── */
+        .dm-toggle { width:38px; height:38px; border-radius:10px; border:1.5px solid #e2e8f0; background:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:17px; transition:0.2s; flex-shrink:0; }
+        .dm-toggle:hover { border-color:#0B1C3E; }
+
+        /* ══════════════════════════════════════════
+           DARK MODE OVERRIDES
+        ══════════════════════════════════════════ */
+        html.dark { color-scheme: dark; }
+        html.dark body { background:#0d1117; color:#e2e8f0; }
+        html.dark .tech-bg { background-color:#0d1117; background-image:radial-gradient(#1e293b 1px, transparent 1px); }
+
+        /* Glass panels */
+        html.dark .glass { background:rgba(15,23,42,0.93); border-color:rgba(255,255,255,0.07); box-shadow:0 4px 20px rgba(0,0,0,0.4); }
+
+        /* Cards */
+        html.dark .prop-card,
+        html.dark .stat-card,
+        html.dark .feature-card,
+        html.dark .creator-card,
+        html.dark .stat-pill { background:#161f2e; border-color:#1e2d42; }
+        html.dark .prop-card:hover,
+        html.dark .stat-card:hover,
+        html.dark .feature-card:hover,
+        html.dark .creator-card:hover { box-shadow:0 14px 36px rgba(0,0,0,0.4); }
+
+        /* Search boxes */
+        html.dark .search-box { background:#161f2e; border-color:#1e2d42; }
+        html.dark .search-box input { background:transparent; color:#e2e8f0; }
+        html.dark .search-box input::placeholder { color:#475569; }
+
+        /* Inputs */
+        html.dark .inp { background:#1e2d42; border-color:#2d3f57; color:#e2e8f0; }
+        html.dark .inp:focus { background:#243349; border-color:#3b82f6; }
+        html.dark .inp::placeholder { color:#475569; }
+        html.dark select.inp option { background:#161f2e; }
+
+        /* Tabs */
+        html.dark .tab { color:#94a3b8; }
+        html.dark .tab:hover { color:#e2e8f0; }
+        html.dark .tab.active { background:#FDBB11; color:#0d1117; box-shadow:0 4px 12px rgba(253,187,17,0.25); }
+
+        /* Toggle button dark */
+        html.dark .dm-toggle { background:#161f2e; border-color:#2d3f57; }
+        html.dark .dm-toggle:hover { border-color:#3b82f6; }
+
+        /* Text colors */
+        html.dark .page-title,
+        html.dark h2,html.dark h3 { color:#f1f5f9; }
+        html.dark .page-subtitle,
+        html.dark p { color:#94a3b8; }
+        html.dark .inp-label { color:#64748b; }
+        html.dark .text-slate-900 { color:#f1f5f9 !important; }
+        html.dark .text-slate-800 { color:#e2e8f0 !important; }
+        html.dark .text-slate-700 { color:#cbd5e1 !important; }
+        html.dark .text-slate-600 { color:#94a3b8 !important; }
+        html.dark .text-slate-500 { color:#64748b !important; }
+        html.dark .text-slate-400 { color:#475569 !important; }
+
+        /* Backgrounds */
+        html.dark .bg-white { background:#161f2e !important; }
+        html.dark .bg-slate-50 { background:#1e2d42 !important; color:#e2e8f0; }
+        html.dark .bg-slate-100 { background:#1e2d42 !important; }
+        html.dark .bg-slate-900 { background:#0d1117 !important; }
+        html.dark .bg-\[\#f8fafc\] { background:#161f2e !important; }
+
+        /* Borders */
+        html.dark .border-slate-200,
+        html.dark .border-\[\#e8ecf2\] { border-color:#1e2d42 !important; }
+        html.dark .border { border-color:#1e2d42 !important; }
+
+        /* Data table */
+        html.dark .data-table th { color:#475569; border-bottom-color:#1e2d42; }
+        html.dark .data-table td { border-bottom-color:#161f2e; color:#cbd5e1; }
+        html.dark .data-table tbody tr:hover td { background:#1e2d42; }
+
+        /* Main search bar on home */
+        html.dark #mainSearch,
+        html.dark #headerSearch { background:#1e2d42 !important; color:#e2e8f0 !important; }
+        html.dark #mainSearch::placeholder,
+        html.dark #headerSearch::placeholder { color:#475569 !important; }
+
+        /* Skeleton shimmer */
+        html.dark .skeleton { background:linear-gradient(90deg,#1e2d42 25%,#243349 50%,#1e2d42 75%); background-size:800px 100%; }
+
+        /* Hex popup */
+        html.dark .hex-popup .leaflet-popup-content-wrapper { background:#161f2e; border-color:#1e2d42; }
+        html.dark .hex-popup .leaflet-popup-tip { background:#161f2e; }
+        html.dark .hex-popup .leaflet-popup-content { color:#e2e8f0; }
+
+        /* stat divider line */
+        html.dark .stat-divider { background:#1e2d42; }
+
+        /* LB toggle */
+        html.dark .lb-toggle { border-color:#2d3f57; color:#94a3b8; }
+        html.dark .lb-toggle.active { background:#0f172a; color:white; border-color:#3b82f6; }
     </style>
 </head>
 <body>
@@ -158,6 +254,7 @@
         <div class="glass p-2 flex gap-2 items-center pointer-events-auto">
             <input type="text" id="headerSearch" placeholder="Quick Search..." class="bg-slate-50 px-4 py-2 rounded-lg text-sm outline-none w-48" onkeyup="if(event.key==='Enter') performSearch('headerSearch')">
             <button onclick="performSearch('headerSearch')" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase">Go</button>
+            <button id="dm-btn" class="dm-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         </div>
     </header>
 
@@ -753,6 +850,24 @@
     </div></div>
 
     <script>
+        // --- DARK MODE ---
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            document.getElementById('dm-btn').textContent = isDark ? '☀️' : '🌙';
+            localStorage.setItem('pn-dark', isDark ? '1' : '0');
+        }
+        (function() {
+            const saved = localStorage.getItem('pn-dark');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (saved === '1' || (saved === null && prefersDark)) {
+                document.documentElement.classList.add('dark');
+                document.addEventListener('DOMContentLoaded', () => {
+                    const btn = document.getElementById('dm-btn');
+                    if (btn) btn.textContent = '☀️';
+                });
+            }
+        })();
+
         // --- GLOBALS ---
         let map, mapPins;
         let anaChart, lbChart, trackChart, forecastChart;
