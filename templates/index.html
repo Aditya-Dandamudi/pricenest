@@ -860,11 +860,17 @@
                 showToast("Please search for a property first!");
                 return;
             }
+            // If we already have a base from a prior search, recalc instantly client-side
+            if (_calcBase) {
+                recalcPriceLocal();
+                showToast("Price updated!");
+                return;
+            }
             const sqft = document.getElementById('ana-sqft').value;
             const beds = document.getElementById('ana-beds').value;
             const baths = document.getElementById('ana-baths').value;
             const cond = document.getElementById('ana-cond').value;
-            
+
             fetchAIValuation(currentActiveAddress, sqft, beds, baths, cond);
         }
 
