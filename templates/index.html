@@ -385,11 +385,11 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="inp-label">Sq Ft</label>
-                            <input type="number" id="ana-sqft" value="1800" class="inp">
+                            <input type="number" id="ana-sqft" value="1800" class="inp" oninput="recalcPriceLocal()">
                         </div>
                         <div>
                             <label class="inp-label">Condition</label>
-                            <select id="ana-cond" class="inp">
+                            <select id="ana-cond" class="inp" onchange="recalcPriceLocal()">
                                 <option value="Fixer">Fixer</option>
                                 <option value="Avg" selected>Average</option>
                                 <option value="Good">Good</option>
@@ -398,11 +398,11 @@
                         </div>
                         <div>
                             <label class="inp-label">Beds</label>
-                            <input type="number" id="ana-beds" value="3" class="inp">
+                            <input type="number" id="ana-beds" value="3" class="inp" oninput="recalcPriceLocal()">
                         </div>
                         <div>
                             <label class="inp-label">Baths</label>
-                            <input type="number" id="ana-baths" value="2" step="0.5" class="inp">
+                            <input type="number" id="ana-baths" value="2" step="0.5" class="inp" oninput="recalcPriceLocal()">
                         </div>
                     </div>
                     <button onclick="updateValuation()" class="w-full bg-[#0B1C3E] text-white py-2.5 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-800 transition">
@@ -756,6 +756,7 @@
         // --- GLOBALS ---
         let map, mapPins;
         let anaChart, lbChart, trackChart, forecastChart;
+        let _calcBase = null; // stores market_base/model_signal/age_adj for instant local recalc
         let mockProps = [];
         let leads = [{ client: "Demo Property", value: 450000 }];
         let currentActiveAddress = "";
@@ -871,6 +872,7 @@
             showToast(`Analyzing ${address.split(',')[0]}...`);
 
             // Reset panels while loading
+            _calcBase = null;
             document.getElementById('ana-result-empty').style.display = 'block';
             document.getElementById('ana-result-full').style.display = 'none';
             document.getElementById('ana-photo-panel').style.display = 'none';
@@ -898,6 +900,9 @@
                     const formatter = new Intl.NumberFormat('en-US', {
                         style: 'currency', currency: 'USD', maximumFractionDigits: 0
                     });
+
+                    // Store calc base for instant local recalc when specs change
+                    if (data.calc_base) _calcBase = data.calc_base;
 
                     // Update hidden price input for anaRunCalc
                     document.getElementById('ana-price').value = data.valuation.estimated_value;
@@ -1093,6 +1098,56 @@
                 </div>`).join('');
 
             document.getElementById('ana-score-panel').style.display = 'block';
+        }
+
+        // ── Instant local price recalc when sqft/beds/baths/condition change ──
+        // Mirrors the exact same formulas as app.py so results match the API.
+        function recalcPriceLocal() {
+            if (!_calcBase) return; // no address searched yet
+
+            const sqft  = Math.max(100,  Math.min(50000, parseFloat(document.getElementById('ana-sqft').value)  || 1800));
+            const beds  = Math.max(0,    Math.min(20,    parseFloat(document.getElementById('ana-beds').value)   || 3));
+            const baths = Math.max(0,    Math.min(20,    parseFloat(document.getElementById('ana-baths').value)  || 2));
+            const cond  = document.getElementById('ana-cond').value || 'Avg';
+
+            const CA_AVG_SQFT = 1650;
+            const size_adj = Math.pow(sqft / CA_AVG_SQFT, 0.48) - 1.0;
+            const bed_adj  = Math.max(-0.15, Math.min(0.18, (beds  - 3.0) * 0.028));
+            const bath_adj = Math.max(-0.08, Math.min(0.12, (baths - 2.0) * 0.018));
+            const cond_adj = { Fixer: -0.13, Avg: 0.0, Good: 0.07, Mint: 0.15 }[cond] ?? 0;
+            const total_adj = Math.max(-0.28, Math.min(0.28,
+                size_adj + bed_adj + bath_adj + cond_adj + _calcBase.age_adj));
+
+            let price = (_calcBase.market_base * (1.0 + total_adj)) + _calcBase.model_signal;
+            price = Math.round(Math.max(150000, Math.min(15000000, price)) / 1000) * 1000;
+
+            const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+            // Update hidden input (drives anaRunCalc)
+            document.getElementById('ana-price').value = price;
+
+            // Update hero display with a quick flash
+            const priceEl = document.getElementById('ana-price-display');
+            if (priceEl) {
+                priceEl.innerText = fmt.format(price);
+                priceEl.style.transition = 'opacity 0.12s';
+                priceEl.style.opacity = '0.4';
+                setTimeout(() => { priceEl.style.opacity = '1'; }, 120);
+            }
+
+            // Update range
+            const lo = Math.round(price * 0.93 / 1000) * 1000;
+            const hi = Math.round(price * 1.07 / 1000) * 1000;
+            const rangeEl = document.getElementById('ana-range');
+            if (rangeEl) rangeEl.innerText = `${fmt.format(lo)} — ${fmt.format(hi)}`;
+            const loEl = document.getElementById('ana-range-low-lbl');
+            const hiEl = document.getElementById('ana-range-high-lbl');
+            if (loEl) loEl.innerText = fmt.format(lo);
+            if (hiEl) hiEl.innerText = fmt.format(hi);
+
+            // Update buy/rent chart and forecast
+            anaRunCalc();
+            if (forecastChart) renderForecastChart(price, fmt);
         }
 
         // --- NEIGHBORHOOD INTELLIGENCE ---

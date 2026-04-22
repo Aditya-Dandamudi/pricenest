@@ -764,6 +764,11 @@ def predict():
                 "range_low":       round(f_price * 0.93, -3),
                 "range_high":      round(f_price * 1.07, -3),
             },
+            "calc_base": {
+                "market_base":  round(market_base, 0),
+                "model_signal": round(model_signal, 0),
+                "age_adj":      age_adj,
+            },
             "location": {"lat": lat, "lon": lon, "address": location.address},
             "neighborhood": {
                 "price_percentile":   _percentile_of(_price_sorted, tract_median),
