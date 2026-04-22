@@ -232,7 +232,8 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
+RENTCAST_API_KEY   = os.environ.get("RENTCAST_API_KEY", "")
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 MODEL_PATH    = 'price_nest_model.joblib'
 FEATURES_PATH = 'model_features.joblib'
 META_PATH     = 'meta_model.joblib'
@@ -746,6 +747,16 @@ def predict():
         tract_median = float(t_data.get('median_home_value', f_price))
         vs_median_pct = round((f_price - tract_median) / tract_median * 100, 1) if tract_median else 0
 
+        # Google Street View Static API — exterior photo of the property
+        if GOOGLE_MAPS_API_KEY:
+            photo_url = (
+                f"https://maps.googleapis.com/maps/api/streetview"
+                f"?size=640x420&location={lat},{lon}"
+                f"&fov=90&pitch=5&source=outdoor&key={GOOGLE_MAPS_API_KEY}"
+            )
+        else:
+            photo_url = None
+
         return jsonify({
             "status": "success",
             "valuation": {
@@ -765,6 +776,7 @@ def predict():
                 "vs_median_pct":      vs_median_pct,
             },
             "contributions": contributions,
+            "photo_url": photo_url,
         })
 
     except ValueError as e:
