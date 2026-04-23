@@ -229,6 +229,31 @@
         /* LB toggle */
         html.dark .lb-toggle { border-color:#2d3f57; color:#94a3b8; }
         html.dark .lb-toggle.active { background:#0f172a; color:white; border-color:#3b82f6; }
+
+        /* Hard-to-read text fixes in dark mode */
+        html.dark { --text-main:#e2e8f0; --text-sub:#94a3b8; }
+        html.dark p, html.dark span, html.dark div, html.dark td, html.dark th, html.dark label { color:inherit; }
+        html.dark .text-\[\#0B1C3E\] { color:#93c5fd !important; }
+        html.dark .text-\[\#FDBB11\] { color:#fbbf24 !important; }
+        html.dark .font-black, html.dark .font-bold { color:#e2e8f0; }
+        html.dark .text-emerald-700 { color:#34d399 !important; }
+        html.dark .bg-emerald-50 { background:rgba(52,211,153,0.1) !important; border-color:rgba(52,211,153,0.2) !important; }
+        html.dark .border-emerald-100 { border-color:rgba(52,211,153,0.2) !important; }
+        html.dark .text-blue-600, html.dark .text-blue-700 { color:#60a5fa !important; }
+        html.dark .text-red-400, html.dark .text-red-500 { color:#f87171 !important; }
+        html.dark .text-green-400 { color:#4ade80 !important; }
+        html.dark .text-yellow-400 { color:#facc15 !important; }
+        html.dark .divide-slate-100 > * { border-color:#1e2d42; }
+        html.dark .border-slate-100 { border-color:#1e2d42 !important; }
+        html.dark .border-slate-200 { border-color:#1e2d42 !important; }
+        html.dark .rounded-xl, html.dark .rounded-2xl { color:inherit; }
+        /* Ensure all card text is readable */
+        html.dark .stat-card *, html.dark .feature-card *, html.dark .creator-card *, html.dark .prop-card * { color:inherit; }
+        html.dark .stat-card .text-\[\#0B1C3E\] { color:#93c5fd !important; }
+        html.dark .page-title { color:#f1f5f9 !important; }
+        html.dark h2.text-slate-900, html.dark h3.text-slate-800 { color:#f1f5f9 !important; }
+        /* Ticker always dark — fine as-is */
+        .ticker-wrap * { color:inherit; }
     </style>
 </head>
 <body>
@@ -254,7 +279,7 @@
         <div class="glass p-2 flex gap-2 items-center pointer-events-auto">
             <input type="text" id="headerSearch" placeholder="Quick Search..." class="bg-slate-50 px-4 py-2 rounded-lg text-sm outline-none w-48" onkeyup="if(event.key==='Enter') performSearch('headerSearch')">
             <button onclick="performSearch('headerSearch')" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase">Go</button>
-            <button id="dm-btn" class="dm-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+            <button id="dm-btn" onclick="toggleDarkMode()" title="Toggle dark mode" style="width:38px;height:38px;border-radius:10px;border:1.5px solid #e2e8f0;background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🌙</button>
         </div>
     </header>
 
@@ -1643,8 +1668,13 @@
 
         function sendToAnalysis(addr) {
             currentActiveAddress = addr;
+            _calcBase = null;
+            const sqft  = document.getElementById('ana-sqft').value  || 1800;
+            const beds  = document.getElementById('ana-beds').value   || 3;
+            const baths = document.getElementById('ana-baths').value  || 2;
+            const cond  = document.getElementById('ana-cond').value   || 'Avg';
             showTab('analysis');
-            updateValuation();
+            fetchAIValuation(addr, sqft, beds, baths, cond);
         }
 
         // --- TRACKER LOGIC ---
