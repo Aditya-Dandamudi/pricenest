@@ -615,7 +615,8 @@ def predict():
                    'dist_coast_km': dist_coast, 'dist_city_km': dist_city}
         q_scale = _knn_scaler.transform(pd.DataFrame([q_vals])[comp_features])
         _, idxs = knn_model.kneighbors(q_scale, n_neighbors=7)
-        p_knn   = float(np.mean([census_gdf.iloc[i]['median_home_value'] for i in idxs[0][1:]]))
+        # At inference time the query is NOT a training point — include all 7 neighbors
+        p_knn   = float(np.mean([census_gdf.iloc[i]['median_home_value'] for i in idxs[0]]))
 
         # Census tract median — ground-truth anchor for this neighborhood
         tract_anchor = float(t_data.get('median_home_value', p_base))
@@ -720,9 +721,8 @@ def predict():
             d['dist_marin'] = ((d['lat']-37.95)**2 + (d['lon']-(-122.53))**2)**0.5
             b  = float(np.exp(_ensemble_predict(pd.DataFrame([d]))))
             s  = b * 0.45 + tract_anchor * 0.55
-            _o_pr   = min(2.0, tract_anchor / 600_000.0)
-            o_appr  = max(1.03, 1.08 - 0.03 * _o_pr)
-            o_mbase = tract_anchor * o_appr
+            # Use the same county appreciation already resolved for this address
+            o_mbase = market_base
             o_h_age = float(d.get('median_house_age', house_age))
             if   o_h_age < 10:  o_age_adj =  0.04
             elif o_h_age < 20:  o_age_adj =  0.02
