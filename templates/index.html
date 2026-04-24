@@ -173,7 +173,7 @@
         /* Tabs */
         html.dark .tab { color:#94a3b8; }
         html.dark .tab:hover { color:#e2e8f0; }
-        html.dark .tab.active { background:#FDBB11; color:#0d1117; box-shadow:0 4px 12px rgba(253,187,17,0.25); }
+        html.dark .tab.active { background:#FDBB11 !important; color:#0B1C3E !important; box-shadow:0 4px 12px rgba(253,187,17,0.3); }
 
         /* Toggle button dark */
         html.dark .dm-toggle { background:#161f2e; border-color:#2d3f57; }
@@ -308,10 +308,26 @@
 
         /* Chart.js canvas — no override needed, handled by JS */
         html.dark canvas { filter: brightness(0.95); }
+
+        /* ── Top loading bar (improvement #1) ── */
+        .loading-bar { position:fixed; top:0; left:0; width:0%; height:3px; background:linear-gradient(90deg,#0B1C3E,#FDBB11); z-index:999; transition:width 0.4s ease; pointer-events:none; opacity:0; }
+        .loading-bar.active { opacity:1; animation:loadBar 1.8s ease-in-out infinite; }
+        @keyframes loadBar { 0% { width:0%; } 70% { width:85%; } 100% { width:100%; } }
+
+        /* ── Search history dropdown (improvement #5) ── */
+        .search-history-dropdown { position:absolute; top:100%; left:0; right:0; background:white; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,0.12); border:1px solid #e2e8f0; z-index:500; margin-top:4px; overflow:hidden; }
+        .search-history-item { padding:9px 14px; font-size:12px; font-weight:600; color:#334155; cursor:pointer; border-bottom:1px solid #f1f5f9; transition:background 0.15s; }
+        .search-history-item:last-child { border-bottom:none; }
+        .search-history-item:hover { background:#f8fafc; }
+        .search-history-label { padding:6px 14px 4px; font-size:9px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #f1f5f9; }
+        html.dark .search-history-dropdown { background:#161f2e; border-color:#1e2d42; }
+        html.dark .search-history-item { color:#cbd5e1; border-bottom-color:#1e2d42; }
+        html.dark .search-history-item:hover { background:#1e2d42; }
     </style>
 </head>
 <body>
 
+    <div id="loading-bar" class="loading-bar"></div>
     <div id="toast-container" class="toast-container"></div>
     <div id="map"></div>
 
@@ -332,10 +348,13 @@
 
         <div class="glass p-2 flex gap-2 items-center pointer-events-auto">
             <div style="position:relative;display:flex;align-items:center;">
-                <span style="position:absolute;left:10px;font-size:13px;opacity:0.4;">🔍</span>
+                <span style="position:absolute;left:10px;font-size:13px;opacity:0.4;z-index:1;">🔍</span>
                 <input type="text" id="headerSearch" placeholder="Address or City..."
                     style="background:#f8fafc;border:none;outline:none;padding:8px 12px 8px 30px;border-radius:8px;font-size:13px;font-weight:600;width:200px;font-family:inherit;"
-                    onkeyup="if(event.key==='Enter') performSearch('headerSearch')">
+                    onkeyup="if(event.key==='Enter') performSearch('headerSearch')"
+                    onfocus="showSearchHistory()"
+                    onblur="setTimeout(hideSearchHistory, 150)">
+                <div id="search-history-dropdown" class="search-history-dropdown" style="display:none;"></div>
             </div>
             <button onclick="performSearch('headerSearch')" class="bg-[#0B1C3E] text-white px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide hover:bg-slate-700 transition">Search</button>
             <button id="dm-btn" onclick="toggleDarkMode()" title="Toggle dark mode" style="width:36px;height:36px;border-radius:9px;border:1.5px solid #e2e8f0;background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:0.2s;">🌙</button>
@@ -472,14 +491,15 @@
     <section id="v-map" class="view-content bg-transparent pointer-events-none">
         <div class="property-scroller pointer-events-auto">
             <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Search address..." onkeyup="if(event.key==='Enter') executeSearch()">
+                <input type="text" id="searchInput" placeholder="Search address..." onkeyup="if(event.key==='Enter') executeSearch(); updateMapClearBtn();">
                 <button onclick="executeSearch()" class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs">Search</button>
+                <button id="map-clear-btn" onclick="clearMapSearch()" style="display:none;background:#f1f5f9;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;flex-shrink:0;white-space:nowrap;">✕ Clear</button>
             </div>
             <div id="propertyCardsContainer"></div>
         </div>
 
-        <!-- Heatmap Toggle Button -->
-        <div class="pointer-events-auto" style="position: absolute; top: 100px; right: 24px; z-index: 160;">
+        <!-- Heatmap Toggle Button + My Location -->
+        <div class="pointer-events-auto" style="position: absolute; top: 100px; right: 24px; z-index: 160; display:flex; flex-direction:column; gap:8px;">
             <button id="heatmap-toggle-btn" onclick="toggleHeatmap()"
                 class="glass flex items-center gap-2 px-4 py-2.5 font-bold text-sm text-slate-700 transition-all hover:shadow-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -487,6 +507,10 @@
                     <path d="M4 8V4a4 4 0 1 1 8 0v4l.8 1.2A2 2 0 0 1 11.2 16H4.8a2 2 0 0 1-1.6-3.2L4 8zm4-6a2 2 0 0 0-2 2v4.5l-.9 1.4A1 1 0 0 0 5.8 11h4.4a1 1 0 0 0 .7-1.1L10 8.5V4a2 2 0 0 0-2-2z"/>
                 </svg>
                 <span id="heatmap-btn-label">Heatmap</span>
+            </button>
+            <button onclick="useMyLocation()"
+                class="glass flex items-center gap-2 px-4 py-2.5 font-bold text-sm text-slate-700 transition-all hover:shadow-lg">
+                📍 My Location
             </button>
         </div>
 
@@ -534,6 +558,22 @@
                 <button type="submit" class="flex-shrink-0 bg-[#0B1C3E] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-800 transition whitespace-nowrap">+ Add</button>
             </form>
 
+            <!-- Tracker Stats Row (improvement #8) -->
+            <div id="tracker-stats" class="glass p-4 mt-4 grid grid-cols-3 gap-4">
+                <div class="text-center">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Properties</div>
+                    <div class="text-2xl font-black text-[#0B1C3E]" id="ts-count">0</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg Value</div>
+                    <div class="text-2xl font-black text-blue-600" id="ts-avg">$0</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Highest</div>
+                    <div class="text-2xl font-black text-emerald-600" id="ts-high">$0</div>
+                </div>
+            </div>
+
             <div class="glass mt-4 overflow-hidden">
                 <table class="data-table">
                     <thead>
@@ -558,7 +598,7 @@
                 <div>
                     <p class="page-eyebrow">Pro Analysis</p>
                     <h2 class="page-title">AI <span style="color:#FDBB11">Analyzer</span></h2>
-                    <p class="page-subtitle">Search an address to begin.</p>
+                    <p class="page-subtitle" id="page-subtitle-analysis">Search an address to begin.</p>
                 </div>
 
                 <!-- Property Specs -->
@@ -617,16 +657,26 @@
                         <div class="rounded-xl border-2 border-dashed border-slate-200 py-6 text-center">
                             <div class="text-2xl mb-1.5">🏠</div>
                             <p class="text-xs text-slate-400 font-semibold">Search an address<br>to begin valuation</p>
+                            <!-- Example address pills (improvement #16) -->
+                            <div class="mt-3 flex flex-col gap-1.5 items-center">
+                                <span onclick="document.getElementById('headerSearch').value='1600 K St, Sacramento';sendToAnalysis('1600 K St, Sacramento')" style="cursor:pointer;padding:4px 10px;border-radius:20px;background:#f1f5f9;font-size:10px;font-weight:700;color:#0B1C3E;border:1px solid #e2e8f0;display:inline-block;transition:background 0.15s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">1600 K St, Sacramento</span>
+                                <span onclick="document.getElementById('headerSearch').value='4509 Camden Ct, Granite Bay';sendToAnalysis('4509 Camden Ct, Granite Bay')" style="cursor:pointer;padding:4px 10px;border-radius:20px;background:#f1f5f9;font-size:10px;font-weight:700;color:#0B1C3E;border:1px solid #e2e8f0;display:inline-block;transition:background 0.15s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">4509 Camden Ct, Granite Bay</span>
+                                <span onclick="document.getElementById('headerSearch').value='123 Ocean Ave, Santa Monica';sendToAnalysis('123 Ocean Ave, Santa Monica')" style="cursor:pointer;padding:4px 10px;border-radius:20px;background:#f1f5f9;font-size:10px;font-weight:700;color:#0B1C3E;border:1px solid #e2e8f0;display:inline-block;transition:background 0.15s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">123 Ocean Ave, Santa Monica</span>
+                            </div>
                         </div>
                         <input type="number" id="ana-price" value="450000" oninput="anaRunCalc()" style="display:none">
                     </div>
                     <!-- Result state (hidden until search) -->
                     <div id="ana-result-full" style="display:none">
+                        <!-- Print button (improvement #13) -->
+                        <div style="display:flex;justify-content:flex-end;padding:6px 6px 0;">
+                            <button id="ana-print-btn" onclick="window.print()" style="display:none;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.8);padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);">🖨️ Print Report</button>
+                        </div>
                         <div class="val-hero">
                             <div style="padding:16px 18px">
                                 <div class="text-[9px] font-black text-blue-300 uppercase tracking-widest mb-1.5">AI Estimated Value · Live</div>
-                                <div class="val-hero-price" id="ana-price-display">—</div>
-                                <p id="ana-range" class="text-[10px] font-semibold text-blue-300 mt-2">Confidence Range: Pending...</p>
+                                <div class="val-hero-price" id="ana-price-display" style="cursor:pointer;" title="Click to copy">—</div>
+                                <p id="ana-range" class="text-[10px] font-semibold text-blue-300 mt-2" title="AI confidence interval: there is ~85% probability the true market value falls within this range">Confidence Range: Pending...</p>
                             </div>
                             <!-- Range bar -->
                             <div style="background:#0d2347;padding:6px 18px 8px">
@@ -787,6 +837,7 @@
                             <div id="lb-btn-buy" class="lb-toggle flex-1" onclick="lbSetMode('buy')">Buy</div>
                         </div>
                         <input type="number" id="lb-housing" value="2200" class="inp text-xl font-black" oninput="lbRunBudget()">
+                        <div id="lb-housing-warning" style="display:none;font-size:11px;font-weight:700;color:#dc2626;margin-top:6px;">⚠️ Housing exceeds 30% of income</div>
                     </div>
                     <div class="glass p-5 space-y-4">
                         <label class="inp-label">Other Monthly Costs</label>
@@ -795,9 +846,14 @@
                             <input type="number" id="lb-food" value="1200" class="inp w-32" oninput="lbRunBudget()">
                         </div>
                         <div class="flex justify-between items-center gap-4">
+                            <label class="text-sm font-bold text-slate-600 flex-1">Transport / Car</label>
+                            <input type="number" id="lb-transport" value="400" class="inp w-32" oninput="lbRunBudget()">
+                        </div>
+                        <div class="flex justify-between items-center gap-4">
                             <label class="text-sm font-bold text-slate-600 flex-1">Savings / Invest</label>
                             <input type="number" id="lb-savings" value="1000" class="inp w-32" oninput="lbRunBudget()">
                         </div>
+                        <div id="lb-savings-warning" style="display:none;font-size:11px;font-weight:700;color:#d97706;margin-top:4px;">💡 Consider saving at least 10% of income</div>
                     </div>
                 </div>
 
@@ -908,33 +964,33 @@
     </section>
 
     <div class="ticker-wrap"><div class="ticker-move">
-        <div class="ticker-item text-green-400">GRANITE BAY ▲ +5.2%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Granite Bay, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">GRANITE BAY</span> ▲ +5.2%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-yellow-400">FOLSOM ▼ -1.1%</div>
+        <div class="ticker-item text-yellow-400"><span onclick="document.getElementById('headerSearch').value='Folsom, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">FOLSOM</span> ▼ -1.1%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">ROSEVILLE ▲ +2.4%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Roseville, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">ROSEVILLE</span> ▲ +2.4%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-blue-400">SACRAMENTO ▲ +3.3%</div>
+        <div class="ticker-item text-blue-400"><span onclick="document.getElementById('headerSearch').value='Sacramento, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">SACRAMENTO</span> ▲ +3.3%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">MARIN COUNTY ▲ +4.7%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Marin County, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">MARIN COUNTY</span> ▲ +4.7%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-red-400">SAN FRANCISCO ▼ -2.8%</div>
+        <div class="ticker-item text-red-400"><span onclick="document.getElementById('headerSearch').value='San Francisco, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">SAN FRANCISCO</span> ▼ -2.8%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">IRVINE ▲ +6.1%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Irvine, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">IRVINE</span> ▲ +6.1%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-yellow-400">LOS ANGELES ▼ -0.9%</div>
+        <div class="ticker-item text-yellow-400"><span onclick="document.getElementById('headerSearch').value='Los Angeles, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">LOS ANGELES</span> ▼ -0.9%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">SAN DIEGO ▲ +3.8%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='San Diego, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">SAN DIEGO</span> ▲ +3.8%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">PALO ALTO ▲ +2.1%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Palo Alto, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">PALO ALTO</span> ▲ +2.1%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-yellow-400">FRESNO ▼ -0.4%</div>
+        <div class="ticker-item text-yellow-400"><span onclick="document.getElementById('headerSearch').value='Fresno, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">FRESNO</span> ▼ -0.4%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">SANTA BARBARA ▲ +5.9%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='Santa Barbara, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">SANTA BARBARA</span> ▲ +5.9%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-green-400">EL DORADO HILLS ▲ +4.0%</div>
+        <div class="ticker-item text-green-400"><span onclick="document.getElementById('headerSearch').value='El Dorado Hills, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">EL DORADO HILLS</span> ▲ +4.0%</div>
         <div class="ticker-item text-slate-400">·</div>
-        <div class="ticker-item text-yellow-400">OAKLAND ▼ -1.6%</div>
+        <div class="ticker-item text-yellow-400"><span onclick="document.getElementById('headerSearch').value='Oakland, CA';performSearch('headerSearch')" style="cursor:pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">OAKLAND</span> ▼ -1.6%</div>
     </div></div>
 
     <script>
@@ -943,6 +999,16 @@
             const isDark = document.documentElement.classList.toggle('dark');
             document.getElementById('dm-btn').textContent = isDark ? '☀️' : '🌙';
             localStorage.setItem('pn-dark', isDark ? '1' : '0');
+            applyChartDarkMode(); // improvement #6
+        }
+
+        // Improvement #6: Chart dark mode defaults
+        function applyChartDarkMode() {
+            const isDark = document.documentElement.classList.contains('dark');
+            Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
+            Chart.defaults.borderColor = isDark ? '#1e2d42' : '#e2e8f0';
+            // Re-update all existing charts
+            [anaChart, lbChart, trackChart, forecastChart].forEach(c => { if (c) c.update(); });
         }
         (function() {
             const saved = localStorage.getItem('pn-dark');
@@ -955,6 +1021,15 @@
                 });
             }
         })();
+
+        // Improvement #4: keyboard shortcut — '/' focuses header search
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT') {
+                e.preventDefault();
+                const hs = document.getElementById('headerSearch');
+                if (hs) { hs.focus(); hs.select(); }
+            }
+        });
 
         // --- GLOBALS ---
         let map, mapPins;
@@ -1033,7 +1108,7 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             if(document.getElementById('t-' + tabId)) document.getElementById('t-' + tabId).classList.add('active');
             document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
-            
+
             const mapDiv = document.getElementById('map');
             if (tabId === 'map') {
                 mapDiv.style.opacity = "1"; mapDiv.style.zIndex = "50";
@@ -1042,6 +1117,8 @@
                 mapDiv.style.opacity = "0"; mapDiv.style.zIndex = "-10";
                 document.getElementById('v-' + tabId).classList.add('active');
             }
+            // Improvement #3: reset title when navigating to home
+            if (tabId === 'home') document.title = 'PriceNest - Master Intelligence';
         }
 
         function showToast(msg) {
@@ -1050,11 +1127,37 @@
             setTimeout(() => el.remove(), 3000);
         }
 
+        // Improvement #5: search history helpers
+        function saveSearchHistory(query) {
+            let history = JSON.parse(localStorage.getItem('pn-history') || '[]');
+            history = history.filter(h => h !== query);
+            history.unshift(query);
+            history = history.slice(0, 5);
+            localStorage.setItem('pn-history', JSON.stringify(history));
+        }
+
+        function showSearchHistory() {
+            const history = JSON.parse(localStorage.getItem('pn-history') || '[]');
+            const dd = document.getElementById('search-history-dropdown');
+            if (!history.length) { dd.style.display = 'none'; return; }
+            dd.innerHTML = '<div class="search-history-label">Recent Searches</div>' +
+                history.map(h => `<div class="search-history-item" onclick="document.getElementById('headerSearch').value='${h.replace(/'/g,"\\'")}';hideSearchHistory();performSearch('headerSearch')">${h}</div>`).join('');
+            dd.style.display = 'block';
+        }
+
+        function hideSearchHistory() {
+            const dd = document.getElementById('search-history-dropdown');
+            if (dd) dd.style.display = 'none';
+        }
+
         // --- BACKEND AI INTEGRATION ---
         async function performSearch(inputId) {
             const query = document.getElementById(inputId).value.trim();
             if (!query) { showToast("Enter an address or city"); return; }
             document.getElementById(inputId).value = '';
+            hideSearchHistory();
+
+            saveSearchHistory(query); // improvement #5
 
             // Full address (starts with house number) → Pro Analysis
             if (/^\d+\s/.test(query)) {
@@ -1089,6 +1192,10 @@
 
         async function fetchAIValuation(address, sqft, beds, baths, cond) {
             showToast(`Analyzing ${address.split(',')[0]}...`);
+
+            // Improvement #1: show loading bar
+            const loadBar = document.getElementById('loading-bar');
+            if (loadBar) { loadBar.classList.add('active'); }
 
             // Reset panels while loading
             _calcBase = null;
@@ -1152,6 +1259,12 @@
 
                     anaRunCalc();
                     showToast(`Valuation: ${formatter.format(data.valuation.estimated_value)}`);
+
+                    // Improvement #3: update document title
+                    document.title = 'PriceNest · ' + address.split(',')[0];
+
+                    // Improvement #5: save to search history
+                    saveSearchHistory(address);
                 } else {
                     throw new Error(data.error || "Backend Failed");
                 }
@@ -1162,6 +1275,9 @@
                 document.getElementById('ana-result-full').style.display = 'none';
                 showToast(`Error: ${err.message}`);
                 anaRunCalc();
+            } finally {
+                // Improvement #1: hide loading bar
+                if (loadBar) { loadBar.classList.remove('active'); loadBar.style.width = '0%'; }
             }
         }
 
@@ -1180,6 +1296,19 @@
                 priceEl.innerText = fmt.format(Math.round(target * ease));
                 if (p < 1) requestAnimationFrame(tick);
             })(performance.now());
+
+            // Improvement #2: click-to-copy price
+            priceEl.onclick = function() {
+                const rawNum = String(val.estimated_value);
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(rawNum).then(() => showToast('Price copied!'));
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = rawNum; document.body.appendChild(ta);
+                    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+                    showToast('Price copied!');
+                }
+            };
 
             // Confidence range
             document.getElementById('ana-range').innerText =
@@ -1201,6 +1330,10 @@
 
             document.getElementById('ana-result-empty').style.display = 'none';
             document.getElementById('ana-result-full').style.display  = 'block';
+
+            // Improvement #13: show print button
+            const printBtn = document.getElementById('ana-print-btn');
+            if (printBtn) printBtn.style.display = 'block';
         }
 
         function renderForecastChart(price, fmt) {
@@ -1324,8 +1457,16 @@
         function recalcPriceLocal() {
             if (!_calcBase) return; // no address searched yet
 
-            const sqft  = Math.max(100,  Math.min(50000, parseFloat(document.getElementById('ana-sqft').value)  || 1800));
-            const beds  = Math.max(0,    Math.min(20,    parseFloat(document.getElementById('ana-beds').value)   || 3));
+            // Improvement #14: input validation styling
+            const sqftRaw = parseFloat(document.getElementById('ana-sqft').value);
+            const bedsRaw = parseFloat(document.getElementById('ana-beds').value);
+            const sqftEl  = document.getElementById('ana-sqft');
+            const bedsEl  = document.getElementById('ana-beds');
+            sqftEl.style.borderColor = (sqftRaw < 200 || sqftRaw > 20000) ? '#ef4444' : '';
+            bedsEl.style.borderColor = (bedsRaw < 0   || bedsRaw > 10)    ? '#ef4444' : '';
+
+            const sqft  = Math.max(100,  Math.min(50000, sqftRaw  || 1800));
+            const beds  = Math.max(0,    Math.min(20,    bedsRaw  || 3));
             const baths = Math.max(0,    Math.min(20,    parseFloat(document.getElementById('ana-baths').value)  || 2));
             const cond  = document.getElementById('ana-cond').value || 'Avg';
 
@@ -1747,6 +1888,7 @@
             const baths = document.getElementById('ana-baths').value  || 2;
             const cond  = document.getElementById('ana-cond').value   || 'Avg';
             showTab('analysis');
+            updateAnalysisSubtitle(addr); // improvement #12
             fetchAIValuation(addr, sqft, beds, baths, cond);
         }
 
@@ -1755,11 +1897,37 @@
             localStorage.setItem('pn-leads', JSON.stringify(leads));
         }
 
+        let _prevTrackerTotal = 0; // improvement #15
+
         function renderLeads() {
             const tbody = document.getElementById('leads-body');
             const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
             const total = leads.reduce((s, l) => s + parseInt(l.value), 0);
-            document.getElementById('total-value').innerText = fmt.format(total);
+            const totalEl = document.getElementById('total-value');
+
+            // Improvement #15: animate total value from prev to new
+            const fromVal = _prevTrackerTotal;
+            const toVal   = total;
+            _prevTrackerTotal = total;
+            const startTime = performance.now();
+            const dur = 600;
+            (function animTick(now) {
+                const p    = Math.min((now - startTime) / dur, 1);
+                const ease = 1 - Math.pow(1 - p, 3);
+                totalEl.innerText = fmt.format(Math.round(fromVal + (toVal - fromVal) * ease));
+                if (p < 1) requestAnimationFrame(animTick);
+            })(performance.now());
+
+            // Improvement #8: update tracker stats row
+            const count = leads.length;
+            const avg   = count > 0 ? Math.round(total / count) : 0;
+            const high  = count > 0 ? Math.max(...leads.map(l => parseInt(l.value))) : 0;
+            const tsCount = document.getElementById('ts-count');
+            const tsAvg   = document.getElementById('ts-avg');
+            const tsHigh  = document.getElementById('ts-high');
+            if (tsCount) tsCount.innerText = count;
+            if (tsAvg)   tsAvg.innerText   = fmt.format(avg);
+            if (tsHigh)  tsHigh.innerText  = fmt.format(high);
 
             const COLORS = ['#0B1C3E','#FDBB11','#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
 
@@ -1821,6 +1989,8 @@
 
         // --- ANALYSIS & BUDGET CALCS ---
         function initCharts() {
+            applyChartDarkMode(); // improvement #6
+
             trackChart = new Chart(document.getElementById('pipelineChart'), {
                 type: 'doughnut',
                 data: { labels: [], datasets: [{ data: [], backgroundColor: ['#0B1C3E', '#FDBB11', '#3b82f6', '#10b981'] }] },
@@ -1838,7 +2008,7 @@
 
             lbChart = new Chart(document.getElementById('lb-budgetChart'), {
                 type: 'polarArea',
-                data: { labels: ['Housing', 'Lifestyle', 'Savings'], datasets: [{ data: [2200, 1200, 1000], backgroundColor: ['#3b82f6', '#FDBB11', '#10b981'] }] },
+                data: { labels: ['Housing', 'Lifestyle', 'Transport', 'Savings'], datasets: [{ data: [2200, 1200, 400, 1000], backgroundColor: ['#3b82f6', '#FDBB11', '#f97316', '#10b981'] }] },
                 options: { responsive: true, maintainAspectRatio: false }
             });
 
@@ -1847,6 +2017,12 @@
         }
 
         function anaRunCalc() {
+            // Improvement #14: input validation styling
+            const sqftVal = parseFloat(document.getElementById('ana-sqft').value);
+            const bedsVal = parseFloat(document.getElementById('ana-beds').value);
+            document.getElementById('ana-sqft').style.borderColor = (sqftVal < 200 || sqftVal > 20000) ? '#ef4444' : '';
+            document.getElementById('ana-beds').style.borderColor = (bedsVal < 0   || bedsVal > 10)    ? '#ef4444' : '';
+
             const price = parseFloat(document.getElementById('ana-price').value) || 0;
             const rent = parseFloat(document.getElementById('ana-rent').value) || 0;
             const yrs = parseInt(document.getElementById('ana-years').value);
@@ -1876,24 +2052,86 @@
         }
 
         function lbRunBudget() {
-            const inc = parseFloat(document.getElementById('lb-income').value) || 0;
-            const house = parseFloat(document.getElementById('lb-housing').value) || 0;
-            const food = parseFloat(document.getElementById('lb-food').value) || 0;
-            const save = parseFloat(document.getElementById('lb-savings').value) || 0;
+            const inc       = parseFloat(document.getElementById('lb-income').value)    || 0;
+            const house     = parseFloat(document.getElementById('lb-housing').value)   || 0;
+            const food      = parseFloat(document.getElementById('lb-food').value)      || 0;
+            const transport = parseFloat(document.getElementById('lb-transport') ? document.getElementById('lb-transport').value : 0) || 0;
+            const save      = parseFloat(document.getElementById('lb-savings').value)   || 0;
 
-            const exp = house + food + save;
-            document.getElementById('lb-out-inc').innerText = "$" + inc.toLocaleString();
-            document.getElementById('lb-out-exp').innerText = "$" + exp.toLocaleString();
+            const exp = house + food + transport + save;
+            document.getElementById('lb-out-inc').innerText  = "$" + inc.toLocaleString();
+            document.getElementById('lb-out-exp').innerText  = "$" + exp.toLocaleString();
             document.getElementById('lb-out-left').innerText = "$" + (inc - exp).toLocaleString();
 
-            lbChart.data.datasets[0].data = [house, food, save];
-            lbChart.update();
+            // Improvement #9: housing cost warning
+            const housingWarn = document.getElementById('lb-housing-warning');
+            if (housingWarn) housingWarn.style.display = (inc > 0 && house / inc > 0.30) ? 'block' : 'none';
+
+            // Improvement #19: savings rate warning
+            const savingsWarn = document.getElementById('lb-savings-warning');
+            if (savingsWarn) savingsWarn.style.display = (inc > 0 && save / inc < 0.10) ? 'block' : 'none';
+
+            // Improvement #10: 4-segment polar chart
+            if (lbChart) {
+                lbChart.data.datasets[0].data = [house, food, transport, save];
+                lbChart.update();
+            }
         }
 
         function lbSetMode(m) {
             document.getElementById('lb-btn-rent').className = m==='rent' ? 'lb-toggle active rounded-l-lg' : 'lb-toggle rounded-l-lg';
             document.getElementById('lb-btn-buy').className = m==='buy' ? 'lb-toggle active rounded-r-lg' : 'lb-toggle rounded-r-lg';
             showToast(`Housing Mode: ${m.toUpperCase()}`);
+        }
+
+        // Improvement #7: Use My Location button
+        async function useMyLocation() {
+            if (!navigator.geolocation) { showToast('Geolocation not supported'); return; }
+            showToast('Getting your location...');
+            navigator.geolocation.getCurrentPosition(async function(pos) {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                map.flyTo([lat, lon], 14, { duration: 1.5 });
+                try {
+                    const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                    const data = await res.json();
+                    const addr = data.display_name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                    showTab('map');
+                    renderMapCard({ addr, lat, lng: lon, price: null });
+                    updateMapClearBtn();
+                } catch(e) {
+                    showToast('Could not reverse-geocode location');
+                }
+            }, function() {
+                showToast('Location access denied');
+            });
+        }
+
+        // Improvement #17: map clear/reset
+        function updateMapClearBtn() {
+            const btn = document.getElementById('map-clear-btn');
+            const inp = document.getElementById('searchInput');
+            const cards = document.getElementById('propertyCardsContainer');
+            if (!btn) return;
+            const hasContent = (inp && inp.value.trim()) || (cards && cards.innerHTML.trim());
+            btn.style.display = hasContent ? 'block' : 'none';
+        }
+
+        function clearMapSearch() {
+            const inp = document.getElementById('searchInput');
+            if (inp) inp.value = '';
+            const cards = document.getElementById('propertyCardsContainer');
+            if (cards) cards.innerHTML = '';
+            if (mapPins) mapPins.clearLayers();
+            updateMapClearBtn();
+        }
+
+        // Improvement #12: Update analysis subtitle after valuation (called from sendToAnalysis)
+        function updateAnalysisSubtitle(address) {
+            const el = document.getElementById('page-subtitle-analysis');
+            if (!el) return;
+            const short = address.length > 35 ? address.slice(0, 32) + '…' : address;
+            el.innerText = 'Showing: ' + short;
         }
     </script>
 </body>
