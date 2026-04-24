@@ -980,12 +980,13 @@
 
                 // Smooth animated counter: counts from 0 → target over ~1.1s with ease-out
                 function animateValue(el, target, renderer, delay=0) {
+                    if (!el || target == null || isNaN(target)) { if(el) el.innerText = '—'; return; }
                     setTimeout(() => {
                         const start = performance.now();
                         const dur   = 1100;
                         function tick(now) {
                             const p    = Math.min((now - start) / dur, 1);
-                            const ease = 1 - Math.pow(1 - p, 3);  // cubic ease-out
+                            const ease = 1 - Math.pow(1 - p, 3);
                             el.innerText = renderer(Math.round(target * ease));
                             if (p < 1) requestAnimationFrame(tick);
                         }

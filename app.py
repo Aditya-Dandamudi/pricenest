@@ -331,14 +331,16 @@ STATE_AVG_DENSITY  = census_gdf['pop_density'].mean()
 
 
 # Pre-compute market stats once at startup — served instantly via /market-stats
-_coastal = census_gdf[census_gdf['dist_coast_km'] <  15]['median_home_value']
-_inland  = census_gdf[census_gdf['dist_coast_km'] >  80]['median_home_value']
-_prices  = census_gdf['median_home_value']
+_prices  = census_gdf['median_home_value'].dropna()
+_coastal = census_gdf[census_gdf['dist_coast_km'].fillna(999) <  15]['median_home_value'].dropna()
+_inland  = census_gdf[census_gdf['dist_coast_km'].fillna(0)   >  80]['median_home_value'].dropna()
+_c_med   = float(_coastal.median()) if len(_coastal) else float(_prices.quantile(0.75))
+_i_med   = float(_inland.median())  if len(_inland)  else float(_prices.quantile(0.25))
 _market_stats = {
-    'ca_median':          round(float(_prices.median()),   -3),
-    'coastal_median':     round(float(_coastal.median()),  -3),
-    'inland_median':      round(float(_inland.median()),   -3),
-    'coastal_premium_pct': round((_coastal.median() - _inland.median()) / max(1.0, float(_inland.median() or 1)) * 100, 1),
+    'ca_median':           round(float(_prices.median()), -3),
+    'coastal_median':      round(_c_med, -3),
+    'inland_median':       round(_i_med, -3),
+    'coastal_premium_pct': round((_c_med - _i_med) / max(1.0, _i_med) * 100, 1),
     'p25':  round(float(_prices.quantile(0.25)), -3),
     'p75':  round(float(_prices.quantile(0.75)), -3),
     'p90':  round(float(_prices.quantile(0.90)), -3),
