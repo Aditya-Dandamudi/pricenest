@@ -2059,9 +2059,13 @@
             const save      = parseFloat(document.getElementById('lb-savings').value)   || 0;
 
             const exp = house + food + transport + save;
-            document.getElementById('lb-out-inc').innerText  = "$" + inc.toLocaleString();
-            document.getElementById('lb-out-exp').innerText  = "$" + exp.toLocaleString();
-            document.getElementById('lb-out-left').innerText = "$" + (inc - exp).toLocaleString();
+            const surplus = inc - exp;
+            const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
+            document.getElementById('lb-out-inc').innerText  = fmt.format(inc);
+            document.getElementById('lb-out-exp').innerText  = fmt.format(exp);
+            const surplusEl = document.getElementById('lb-out-left');
+            surplusEl.innerText   = fmt.format(surplus);
+            surplusEl.style.color = surplus >= 0 ? '#059669' : '#dc2626';
 
             // Improvement #9: housing cost warning
             const housingWarn = document.getElementById('lb-housing-warning');
