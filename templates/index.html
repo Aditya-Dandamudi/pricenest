@@ -745,6 +745,20 @@
                         <div class="w-full h-1 rounded-full mt-3" style="background:linear-gradient(90deg,#ef4444,#f97316)"></div>
                     </div>
                 </div>
+                <!-- Mortgage Breakdown Panel -->
+                <div id="ana-mortgage-panel" class="glass p-4" style="display:none">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mortgage Breakdown</span>
+                        <span id="ana-mortgage-piti" class="text-sm font-black text-[#0B1C3E]">—/mo</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-3" id="ana-mortgage-grid"></div>
+                    <div class="flex justify-between text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
+                        <span>Loan: <span id="ana-loan-amt" class="font-black text-slate-600">—</span></span>
+                        <span>Total Interest: <span id="ana-total-interest" class="font-black text-red-400">—</span></span>
+                        <span>Break-even vs Rent: <span id="ana-breakeven" class="font-black text-emerald-600">—</span></span>
+                    </div>
+                </div>
+
                 <!-- Investment Score Panel -->
                 <div id="ana-score-panel" class="glass p-4" style="display:none">
                     <div class="flex items-center gap-4">
@@ -2049,6 +2063,38 @@
             anaChart.data.datasets[0].data = rentData;
             anaChart.data.datasets[1].data = buyData;
             anaChart.update();
+
+            // Mortgage breakdown panel
+            if (price > 0) {
+                const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
+                const loanAmt    = price - down;
+                const taxMo      = Math.round(price * 0.011 / 12);   // ~1.1% property tax
+                const insMo      = Math.round(price * 0.004 / 12);   // ~0.4% homeowners ins
+                const pmi        = down / price < 0.20 ? Math.round(loanAmt * 0.008 / 12) : 0;
+                const piti       = Math.round(monthlyP) + taxMo + insMo + pmi;
+                const totalInt   = Math.round(monthlyP * 360 - loanAmt);
+
+                // Break-even: month when cumulative buy cost < cumulative rent cost
+                let breakEvenYr = '> 30 yrs';
+                for (let i = 0; i < buyData.length; i++) {
+                    if (buyData[i] <= rentData[i]) { breakEvenYr = `Yr ${i+1}`; break; }
+                }
+
+                document.getElementById('ana-mortgage-piti').innerText = fmt.format(piti) + '/mo';
+                document.getElementById('ana-loan-amt').innerText       = fmt.format(loanAmt);
+                document.getElementById('ana-total-interest').innerText = fmt.format(totalInt);
+                document.getElementById('ana-breakeven').innerText      = breakEvenYr;
+                document.getElementById('ana-mortgage-grid').innerHTML  = [
+                    { label:'Principal & Interest', val: fmt.format(Math.round(monthlyP)), color:'#3b82f6' },
+                    { label:'Property Tax',          val: fmt.format(taxMo),               color:'#f59e0b' },
+                    { label:'Insurance',             val: fmt.format(insMo),               color:'#10b981' },
+                    { label: pmi ? 'PMI' : 'Down Pmt %', val: pmi ? fmt.format(pmi) : (parseFloat(document.getElementById('ana-down').value)||20)+'%', color: pmi ? '#ef4444' : '#8b5cf6' },
+                ].map(d => `<div class="text-center bg-slate-50 rounded-xl p-2 border border-slate-100">
+                    <div class="text-[8px] font-black uppercase tracking-wide mb-1" style="color:${d.color}">${d.label}</div>
+                    <div class="text-xs font-black text-slate-700">${d.val}</div>
+                </div>`).join('');
+                document.getElementById('ana-mortgage-panel').style.display = 'block';
+            }
         }
 
         function lbRunBudget() {
