@@ -621,8 +621,9 @@ def predict():
         # Census tract median — ground-truth anchor for this neighborhood
         tract_anchor = float(t_data.get('median_home_value', p_base))
 
-        # Blend: 45% ensemble, 55% tract anchor
-        p_stacked = p_base * 0.45 + tract_anchor * 0.55
+        # Three-way blend: ensemble ML + KNN neighborhood comps + tract anchor
+        # p_knn was previously computed but never used — now included at 20% weight
+        p_stacked = p_base * 0.30 + p_knn * 0.20 + tract_anchor * 0.50
 
         # ── County-level appreciation (CAR Q4 2024 vs ACS 2020) ─────────────
         # Look up the county from the geocoded address first; fall back to a
