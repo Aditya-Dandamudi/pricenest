@@ -925,6 +925,22 @@ def predict():
         else:                                     market_temp = {"label": "Cooling ↓", "color": "#3b82f6"}
         market_temp["trend_pct"] = round((_factor - 1.0) * 100, 1)
 
+        # Offer strategy: how aggressively to bid based on market heat + env risk
+        if market_temp["label"].startswith("Hot"):
+            offer_strategy = {"action": "Bid Over", "pct": 4,
+                              "tip": "Expect multiple offers — bid 3–5% above asking, limit contingencies, and move fast."}
+        elif market_temp["label"].startswith("Warm"):
+            offer_strategy = {"action": "Bid At/Over", "pct": 2,
+                              "tip": "Competitive market — offer at or 1–3% above asking with a clean, quick-close offer."}
+        elif market_temp["label"].startswith("Stable"):
+            offer_strategy = {"action": "Negotiate", "pct": -1,
+                              "tip": "Balanced market — start at asking, push for seller concessions or closing cost help."}
+        else:
+            offer_strategy = {"action": "Bid Below", "pct": -3,
+                              "tip": "Buyer's market — bid 2–4% below asking and request closing cost assistance."}
+        if _fire_risk or _flood_risk:
+            offer_strategy["tip"] += " Note env risk — factor insurance costs into your max offer."
+
         # Comparable tracts — top 3 from whichever KNN path ran
         try:
             if _n_nearby >= 7:
@@ -974,6 +990,7 @@ def predict():
             "walk_score":      walk_score,
             "market_temp":     market_temp,
             "comp_details":    comp_details,
+            "offer_strategy":  offer_strategy,
             "rent_estimate": round(rc_rent, 0) if rc_rent else None,
             "rent_yield":    rent_yield,
             "location": {"lat": lat, "lon": lon, "address": location.address},
