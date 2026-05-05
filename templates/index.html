@@ -154,6 +154,10 @@
         html.dark .feature-card,
         html.dark .creator-card,
         html.dark .stat-pill { background:#161f2e; border-color:#1e2d42; }
+        .upgrade-pill { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1.5px solid #e2e8f0;font-size:10px;font-weight:700;color:#475569;cursor:pointer;transition:all 0.15s;user-select:none;background:#f8fafc; }
+        .upgrade-pill.active { background:#0B1C3E;border-color:#0B1C3E;color:#FDBB11; }
+        html.dark .upgrade-pill { background:#1e2d42;border-color:#2d3f57;color:#94a3b8; }
+        html.dark .upgrade-pill.active { background:#FDBB11;border-color:#FDBB11;color:#0B1C3E; }
         html.dark .prop-card:hover,
         html.dark .stat-card:hover,
         html.dark .feature-card:hover,
@@ -601,6 +605,20 @@
                     <p class="page-subtitle" id="page-subtitle-analysis">Search an address to begin.</p>
                 </div>
 
+                <!-- In-Panel Address Search -->
+                <div class="glass p-4">
+                    <p class="inp-label mb-2">Search Address</p>
+                    <div class="flex gap-2">
+                        <input type="text" id="ana-addr-input" placeholder="e.g. 123 Main St, Los Angeles"
+                               class="inp flex-1 text-xs"
+                               onkeydown="if(event.key==='Enter'){anaSearchFromPanel()}">
+                        <button onclick="anaSearchFromPanel()"
+                                class="bg-[#0B1C3E] text-white px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-800 transition whitespace-nowrap">
+                            Analyze →
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Property Specs -->
                 <div class="glass p-5 space-y-4">
                     <p class="inp-label">Property Specs</p>
@@ -625,6 +643,25 @@
                         <div>
                             <label class="inp-label">Baths</label>
                             <input type="number" id="ana-baths" value="2" step="0.5" class="inp" oninput="recalcPriceLocal()">
+                        </div>
+                        <div>
+                            <label class="inp-label">Year Built</label>
+                            <input type="number" id="ana-year-built" placeholder="e.g. 1995" class="inp" min="1800" max="2025">
+                        </div>
+                        <div>
+                            <label class="inp-label">Lot Size (sqft)</label>
+                            <input type="number" id="ana-lot-size" value="5000" class="inp" min="500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="inp-label mb-2">Upgrades / Features</label>
+                        <div class="flex flex-wrap gap-1.5" id="upgrades-pills">
+                            <label class="upgrade-pill"><input type="checkbox" value="pool" class="hidden"> 🏊 Pool</label>
+                            <label class="upgrade-pill"><input type="checkbox" value="solar" class="hidden"> ☀️ Solar</label>
+                            <label class="upgrade-pill"><input type="checkbox" value="new_kitchen" class="hidden"> 🍳 New Kitchen</label>
+                            <label class="upgrade-pill"><input type="checkbox" value="garage" class="hidden"> 🚗 Garage</label>
+                            <label class="upgrade-pill"><input type="checkbox" value="new_roof" class="hidden"> 🏠 New Roof</label>
+                            <label class="upgrade-pill"><input type="checkbox" value="renovated" class="hidden"> ✨ Renovated</label>
                         </div>
                     </div>
                     <button onclick="updateValuation()" class="w-full bg-[#0B1C3E] text-white py-2.5 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-800 transition">
@@ -674,9 +711,15 @@
                         </div>
                         <div class="val-hero">
                             <div style="padding:16px 18px">
-                                <div class="text-[9px] font-black text-blue-300 uppercase tracking-widest mb-1.5">AI Estimated Value · Live</div>
+                                <div class="flex items-center justify-between">
+                                    <div class="text-[9px] font-black text-blue-300 uppercase tracking-widest mb-1.5">AI Estimated Value · Live</div>
+                                    <div id="ana-market-temp-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full" style="display:none"></div>
+                                </div>
                                 <div class="val-hero-price" id="ana-price-display" style="cursor:pointer;" title="Click to copy">—</div>
-                                <p id="ana-range" class="text-[10px] font-semibold text-blue-300 mt-2" title="AI confidence interval: there is ~85% probability the true market value falls within this range">Confidence Range: Pending...</p>
+                                <div class="flex items-center gap-3 mt-1">
+                                    <p id="ana-range" class="text-[10px] font-semibold text-blue-300" title="AI confidence interval">Confidence Range: Pending...</p>
+                                    <span id="ana-ppsf-badge" class="text-[9px] font-black text-yellow-300 bg-yellow-400/10 px-2 py-0.5 rounded-full" style="display:none"></span>
+                                </div>
                             </div>
                             <!-- Range bar -->
                             <div style="background:#0d2347;padding:6px 18px 8px">
@@ -745,6 +788,20 @@
                         <div class="w-full h-1 rounded-full mt-3" style="background:linear-gradient(90deg,#ef4444,#f97316)"></div>
                     </div>
                 </div>
+                <!-- Rent Estimate Pill Row (hidden until RentCast data available) -->
+                <div id="ana-rent-estimate-pill" class="grid grid-cols-2 gap-4" style="display:none">
+                    <div class="stat-pill">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Est. Monthly Rent</div>
+                        <div class="text-3xl font-black text-violet-600" id="ana-out-rent-est">—</div>
+                        <div class="w-full h-1 rounded-full mt-3" style="background:linear-gradient(90deg,#7c3aed,#a855f7)"></div>
+                    </div>
+                    <div class="stat-pill">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Gross Rent Yield</div>
+                        <div class="text-3xl font-black text-emerald-600" id="ana-out-yield">—</div>
+                        <div class="w-full h-1 rounded-full mt-3" style="background:linear-gradient(90deg,#10b981,#34d399)"></div>
+                    </div>
+                </div>
+
                 <!-- Mortgage Breakdown Panel -->
                 <div id="ana-mortgage-panel" class="glass p-4" style="display:none">
                     <div class="flex items-center justify-between mb-3">
@@ -825,6 +882,78 @@
                     </div>
                     <p class="text-[10px] text-slate-400 mb-4">Each bar shows how much that factor adds or subtracts from the price compared to the average California location.</p>
                     <div class="space-y-3" id="drivers-bars"></div>
+                </div>
+
+                <!-- Comparable Tracts card -->
+                <div id="comps-card" class="glass p-6" style="display:none;">
+                    <h3 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-1">Nearby Comps</h3>
+                    <p class="text-[10px] text-slate-400 mb-3">Most similar census tracts within 35 km.</p>
+                    <div id="comps-table" class="space-y-2"></div>
+                </div>
+
+                <!-- Property Tax & Walk Score card -->
+                <div id="tax-walk-card" class="glass p-5" style="display:none;">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Est. Property Tax</div>
+                            <div class="text-xl font-black text-slate-800 dark:text-slate-100" id="ana-prop-tax-mo">—</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5" id="ana-prop-tax-yr"></div>
+                            <div class="text-[9px] text-slate-300 mt-0.5">CA ~1.1% effective rate</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Walk Score</div>
+                            <div class="text-xl font-black" id="ana-walk-score">—</div>
+                            <div class="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mt-2 overflow-hidden">
+                                <div id="ana-walk-bar" class="h-full rounded-full transition-all duration-700" style="width:0%"></div>
+                            </div>
+                            <div class="text-[9px] text-slate-400 mt-1" id="ana-walk-label"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Cost of Ownership card -->
+                <div id="total-cost-card" class="glass p-5" style="display:none;">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">True Monthly Cost</h3>
+                        <button onclick="shareReport()" class="text-[10px] font-black text-slate-400 hover:text-slate-600 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 transition">⬆ Share</button>
+                    </div>
+                    <div id="total-cost-rows" class="space-y-2 text-[12px]"></div>
+                    <div class="flex justify-between items-center pt-3 mt-3 border-t border-slate-200 dark:border-slate-700">
+                        <span class="text-xs font-black text-slate-700 dark:text-slate-200">Total Monthly</span>
+                        <span class="text-lg font-black text-[#0B1C3E] dark:text-yellow-300" id="total-cost-sum">—</span>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between text-[10px] text-slate-400">
+                        <span>Income needed (28% DTI)</span>
+                        <span class="font-black text-slate-600 dark:text-slate-300" id="income-needed-lbl">—</span>
+                    </div>
+                </div>
+
+                <!-- 5-Year ROI panel -->
+                <div id="roi-card" class="glass p-5" style="display:none;">
+                    <h3 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-3">5-Year ROI Estimate</h3>
+                    <div class="grid grid-cols-3 gap-3" id="roi-grid"></div>
+                </div>
+
+                <!-- Environmental risk banner -->
+                <div id="env-risk-card" style="display:none;border-radius:12px;padding:10px 14px;font-size:11px;font-weight:700;"></div>
+
+                <!-- Signal Breakdown card -->
+                <div id="signals-card" class="glass p-6" style="display:none;">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider dark:text-slate-200">Model Signals</h3>
+                        <span id="conf-badge" class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider"></span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mb-4">How the three independent price signals compare. Tight agreement = higher confidence.</p>
+                    <div class="space-y-3" id="signals-bars"></div>
+                    <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                            <span>Confidence Score</span>
+                            <span id="conf-score-lbl" class="font-black"></span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div id="conf-bar" class="h-full rounded-full transition-all duration-700" style="width:0%"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1220,17 +1349,28 @@
             document.getElementById('ana-forecast-panel').style.display = 'none';
             document.getElementById('neighborhood-card').style.display = 'none';
             document.getElementById('drivers-card').style.display = 'none';
+            document.getElementById('signals-card').style.display  = 'none';
+            document.getElementById('comps-card').style.display      = 'none';
+            document.getElementById('tax-walk-card').style.display   = 'none';
+            document.getElementById('total-cost-card').style.display = 'none';
+            document.getElementById('roi-card').style.display        = 'none';
+            document.getElementById('env-risk-card').style.display   = 'none';
+            document.getElementById('ana-market-temp-badge').style.display = 'none';
+            document.getElementById('ana-ppsf-badge').style.display = 'none';
 
             try {
                 const response = await fetch("/predict", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        address: address,
-                        sqft: sqft || 1800,
-                        beds: beds || 3,
-                        baths: baths || 2.0,
-                        condition: cond || "Avg"
+                        address:    address,
+                        sqft:       sqft || 1800,
+                        beds:       beds || 3,
+                        baths:      baths || 2.0,
+                        condition:  cond || "Avg",
+                        year_built: document.getElementById('ana-year-built').value || null,
+                        lot_size:   document.getElementById('ana-lot-size').value   || 5000,
+                        upgrades:   [...document.querySelectorAll('#upgrades-pills input:checked')].map(el => el.value),
                     })
                 });
 
@@ -1260,8 +1400,11 @@
                     // Render beautiful valuation hero card
                     renderValuationHero(data, formatter);
 
-                    // Render 20-year value forecast
-                    renderForecastChart(data.valuation.estimated_value, formatter);
+                    // Store full response for share/ROI panels
+                    _lastValData = data;
+
+                    // Render 20-year value forecast using actual county appreciation rate
+                    renderForecastChart(data.valuation.estimated_value, formatter, data.annual_rate);
 
                     // Render investment score
                     if (data.neighborhood && data.contributions) {
@@ -1270,6 +1413,30 @@
 
                     if (data.neighborhood) renderNeighborhoodCard(data.neighborhood, address, data.valuation.estimated_value, formatter);
                     if (data.contributions) renderDriversCard(data.contributions, formatter);
+                    if (data.signals)      renderSignalBreakdown(data.signals, data.valuation, formatter);
+                    if (data.comp_details) renderComps(data.comp_details, formatter);
+                    if (data.property_tax || data.walk_score) renderTaxWalk(data.property_tax, data.walk_score);
+                    if (data.market_temp)  renderMarketTemp(data.market_temp);
+                    renderTotalCost(data, formatter);
+                    renderROIPanel(data, formatter);
+                    if (data.env_risk)     renderEnvRisk(data.env_risk);
+                    if (data.valuation.price_per_sqft) {
+                        const ppsfEl = document.getElementById('ana-ppsf-badge');
+                        ppsfEl.textContent = '$' + data.valuation.price_per_sqft.toLocaleString() + '/sqft';
+                        ppsfEl.style.display = 'inline';
+                    }
+
+                    // Show RentCast rent estimate if returned
+                    const rentPill = document.getElementById('ana-rent-estimate-pill');
+                    if (data.rent_estimate) {
+                        document.getElementById('ana-out-rent-est').textContent = formatter.format(data.rent_estimate) + '/mo';
+                        document.getElementById('ana-out-yield').textContent = data.rent_yield ? data.rent_yield.toFixed(1) + '%' : '—';
+                        rentPill.style.display = 'grid';
+                        // Auto-populate the rent comp field so buy/rent chart uses live data
+                        document.getElementById('ana-rent').value = Math.round(data.rent_estimate);
+                    } else {
+                        rentPill.style.display = 'none';
+                    }
 
                     anaRunCalc();
                     showToast(`Valuation: ${formatter.format(data.valuation.estimated_value)}`);
@@ -1324,9 +1491,12 @@
                 }
             };
 
-            // Confidence range
+            // Confidence range — now dynamically sized by signal agreement
+            const confLabel = val.confidence_label || '';
+            const confScore = val.confidence_score || 0;
             document.getElementById('ana-range').innerText =
-                `${fmt.format(val.range_low)} — ${fmt.format(val.range_high)}`;
+                `${fmt.format(val.range_low)} — ${fmt.format(val.range_high)}` +
+                (confLabel ? `  ·  ${confLabel} Confidence` : '');
             document.getElementById('ana-range-low-lbl').innerText  = fmt.format(val.range_low);
             document.getElementById('ana-range-high-lbl').innerText = fmt.format(val.range_high);
 
@@ -1350,10 +1520,16 @@
             if (printBtn) printBtn.style.display = 'block';
         }
 
-        function renderForecastChart(price, fmt) {
-            const labels = ['Now','Yr 5','Yr 10','Yr 15','Yr 20'];
-            const pts     = [0, 5, 10, 15, 20];
-            function proj(rate) { return pts.map(y => Math.round(price * Math.pow(1 + rate, y))); }
+        // Stored for ROI / total cost panels that reference latest valuation
+        let _lastValData = null;
+
+        function renderForecastChart(price, fmt, annualRate) {
+            const base = (annualRate || 4.0) / 100;
+            const bear = Math.max(0.005, base - 0.015);
+            const bull = base + 0.020;
+            const labels = ['Now','Yr 3','Yr 5','Yr 10','Yr 15','Yr 20'];
+            const pts    = [0, 3, 5, 10, 15, 20];
+            function proj(r) { return pts.map(y => Math.round(price * Math.pow(1 + r, y))); }
 
             const fmtK = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0, notation:'compact' });
 
@@ -1365,16 +1541,16 @@
                 data: {
                     labels,
                     datasets: [
-                        { label:'Conservative 2.5%', data: proj(0.025), borderColor:'#94a3b8', backgroundColor:'transparent', tension:0.4, pointRadius:4, pointBackgroundColor:'#94a3b8', borderWidth:2 },
-                        { label:'Base 4.0%',          data: proj(0.040), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.07)', fill:true, tension:0.4, pointRadius:5, pointBackgroundColor:'#3b82f6', borderWidth:2.5 },
-                        { label:'Optimistic 6.5%',    data: proj(0.065), borderColor:'#10b981', backgroundColor:'transparent', tension:0.4, pointRadius:4, pointBackgroundColor:'#10b981', borderWidth:2 },
+                        { label:`Bear ${(bear*100).toFixed(1)}%`,  data: proj(bear), borderColor:'#94a3b8', backgroundColor:'transparent', tension:0.4, pointRadius:3, borderWidth:1.5, borderDash:[4,3] },
+                        { label:`Base ${(base*100).toFixed(1)}%`,  data: proj(base), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.07)', fill:true, tension:0.4, pointRadius:5, pointBackgroundColor:'#3b82f6', borderWidth:2.5 },
+                        { label:`Bull ${(bull*100).toFixed(1)}%`,  data: proj(bull), borderColor:'#10b981', backgroundColor:'transparent', tension:0.4, pointRadius:3, borderWidth:1.5 },
                     ]
                 },
                 options: {
                     responsive:true, maintainAspectRatio:false,
                     interaction: { mode:'index', intersect:false },
                     plugins: {
-                        legend: { display:false },
+                        legend: { display:true, labels:{ font:{size:9,weight:'700'}, boxWidth:12, padding:10, color:'#94a3b8' } },
                         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmtK.format(ctx.raw)}` } }
                     },
                     scales: {
@@ -1384,23 +1560,22 @@
                 }
             });
 
-            // Summary cards: current, 10yr base, 20yr base
-            const p10 = proj(0.040)[2], p20 = proj(0.040)[4];
-            const gain10 = Math.round((p10 / price - 1) * 100);
-            const gain20 = Math.round((p20 / price - 1) * 100);
+            const p5base = proj(base)[2], p10base = proj(base)[3], p20base = proj(base)[5];
+            const gain5 = Math.round((p5base/price-1)*100), gain10 = Math.round((p10base/price-1)*100), gain20 = Math.round((p20base/price-1)*100);
             document.getElementById('ana-forecast-summary').innerHTML = `
-                <div class="text-center bg-slate-50 rounded-xl p-3 border border-slate-100">
-                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Today</div>
-                    <div class="text-sm font-black text-slate-700">${fmtK.format(price)}</div>
+                <div class="text-center bg-slate-50 dark:bg-slate-800 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
+                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Yr 5 · Base</div>
+                    <div class="text-sm font-black text-slate-700 dark:text-slate-100">${fmtK.format(p5base)}</div>
+                    <div class="text-[9px] font-bold text-blue-400 mt-0.5">+${gain5}%</div>
                 </div>
-                <div class="text-center bg-blue-50 rounded-xl p-3 border border-blue-100">
+                <div class="text-center bg-blue-50 dark:bg-blue-900/30 rounded-xl p-3 border border-blue-100 dark:border-blue-800">
                     <div class="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">Yr 10 · Base</div>
-                    <div class="text-sm font-black text-blue-700">${fmtK.format(p10)}</div>
+                    <div class="text-sm font-black text-blue-700 dark:text-blue-300">${fmtK.format(p10base)}</div>
                     <div class="text-[9px] font-bold text-blue-400 mt-0.5">+${gain10}%</div>
                 </div>
-                <div class="text-center bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                <div class="text-center bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-3 border border-emerald-100 dark:border-emerald-800">
                     <div class="text-[9px] font-black text-emerald-500 uppercase tracking-wider mb-1">Yr 20 · Base</div>
-                    <div class="text-sm font-black text-emerald-700">${fmtK.format(p20)}</div>
+                    <div class="text-sm font-black text-emerald-700 dark:text-emerald-300">${fmtK.format(p20base)}</div>
                     <div class="text-[9px] font-bold text-emerald-400 mt-0.5">+${gain20}%</div>
                 </div>`;
         }
@@ -1521,7 +1696,7 @@
 
             // Update buy/rent chart and forecast
             anaRunCalc();
-            if (forecastChart) renderForecastChart(price, fmt);
+            if (forecastChart) renderForecastChart(price, fmt, _lastValData && _lastValData.annual_rate);
         }
 
         // --- NEIGHBORHOOD INTELLIGENCE ---
@@ -1605,6 +1780,222 @@
                         </div>
                     </div>`;
                 }).join('');
+        }
+
+        // --- SIGNAL BREAKDOWN CARD ---
+        function renderSignalBreakdown(signals, val, fmt) {
+            const card = document.getElementById('signals-card');
+            card.style.display = 'block';
+
+            const confScore = val.confidence_score || 0;
+            const confLabel = val.confidence_label || 'Medium';
+            const confColor = confLabel === 'High' ? '#10b981' : confLabel === 'Medium' ? '#f59e0b' : '#ef4444';
+
+            // Badge
+            const badge = document.getElementById('conf-badge');
+            badge.textContent = confLabel + ' Confidence';
+            badge.style.background = confColor + '20';
+            badge.style.color = confColor;
+
+            // Confidence bar
+            document.getElementById('conf-score-lbl').textContent = confScore.toFixed(1) + '%';
+            document.getElementById('conf-score-lbl').style.color = confColor;
+            setTimeout(() => {
+                document.getElementById('conf-bar').style.width = confScore + '%';
+                document.getElementById('conf-bar').style.background = confColor;
+            }, 100);
+
+            // Build signal rows
+            const w = signals.weights || {ml:30, knn:20, tract:50};
+            const rows = [
+                { label: '🤖 ML Ensemble',    key: 'ml_ensemble',  weight: w.ml,   color: '#3b82f6' },
+                { label: '🏘️ KNN Comps',       key: 'knn_comps',    weight: w.knn,  color: '#7c3aed' },
+                { label: '📊 Tract Anchor',    key: 'tract_anchor', weight: w.tract, color: '#10b981' },
+                { label: '🏠 RentCast AVM',    key: 'rentcast',     weight: null,   color: '#f97316' },
+            ];
+
+            const allVals = rows.map(r => signals[r.key]).filter(v => v);
+            const minV = Math.min(...allVals);
+            const maxV = Math.max(...allVals);
+            const spread = maxV - minV;
+
+            document.getElementById('signals-bars').innerHTML = rows
+                .filter(r => signals[r.key])
+                .map(r => {
+                    const v   = signals[r.key];
+                    const pct = maxV > minV ? Math.round((v - minV) / (maxV - minV) * 80 + 10) : 55;
+                    const wLabel = r.weight ? `${r.weight}% weight` : 'live blend';
+                    return `
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">${r.label}</span>
+                            <div class="text-right">
+                                <span class="text-[11px] font-black" style="color:${r.color}">${fmt.format(v)}</span>
+                                <span class="text-[10px] text-slate-400 ml-1">${wLabel}</span>
+                            </div>
+                        </div>
+                        <div class="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-700" style="width:${pct}%;background:${r.color}"></div>
+                        </div>
+                    </div>`;
+                }).join('') +
+                (spread > 0 ? `
+                <div class="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between text-[10px] text-slate-400">
+                    <span>Signal spread</span>
+                    <span class="font-black ${spread > 200000 ? 'text-amber-500' : 'text-emerald-500'}">${fmt.format(spread)}</span>
+                </div>` : '');
+        }
+
+        // --- UPGRADE PILLS — toggle + auto-recalculate ---
+        document.querySelectorAll('.upgrade-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                pill.classList.toggle('active');
+                if (currentActiveAddress) updateValuation();
+            });
+        });
+
+        // --- SHARE REPORT ---
+        function shareReport() {
+            if (!_lastValData) return;
+            const v = _lastValData.valuation;
+            const n = _lastValData.neighborhood || {};
+            const fmt = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0});
+            const addr = document.getElementById('ana-addr-input').value || currentActiveAddress || '';
+            const text = [
+                `🏠 PriceNest AI Valuation`,
+                `📍 ${addr}`,
+                `💰 Estimated Value: ${fmt.format(v.estimated_value)}`,
+                `📐 ${fmt.format(v.price_per_sqft)}/sqft`,
+                `📊 Range: ${fmt.format(v.range_low)} – ${fmt.format(v.range_high)} (${v.confidence_label} confidence)`,
+                _lastValData.rent_estimate ? `🏘️ Est. Rent: ${fmt.format(_lastValData.rent_estimate)}/mo` : '',
+                `📈 Market: ${(_lastValData.market_temp||{}).label || ''}`,
+                `🔢 Walk Score: ${_lastValData.walk_score || '—'}`,
+                ``,
+                `Generated by PriceNest · pricenest.app`,
+            ].filter(Boolean).join('\n');
+            navigator.clipboard ? navigator.clipboard.writeText(text).then(() => showToast('Report copied to clipboard!')) : showToast('Copy not supported');
+        }
+
+        // --- TOTAL COST OF OWNERSHIP ---
+        function renderTotalCost(data, fmt) {
+            const card = document.getElementById('total-cost-card');
+            card.style.display = 'block';
+            const price = data.valuation.estimated_value;
+            const down  = price * 0.20;
+            const loan  = price - down;
+            const rate  = 0.069 / 12;
+            const pmt   = Math.round(loan * rate / (1 - Math.pow(1 + rate, -360)));
+            const tax   = (data.property_tax || {}).monthly || 0;
+            const ins   = Math.round(price * 0.004 / 12);
+            const hoa   = data.hoa_estimate || 0;
+            const total = pmt + tax + ins + hoa;
+            const rows  = [
+                ['Mortgage (20% down, 6.9%)', pmt],
+                ['Property Tax', tax],
+                ['Homeowner Insurance', ins],
+                ...(hoa ? [['HOA (est.)', hoa]] : []),
+            ];
+            document.getElementById('total-cost-rows').innerHTML = rows.map(([label, val]) => `
+                <div class="flex justify-between text-slate-500 dark:text-slate-400">
+                    <span>${label}</span><span class="font-bold text-slate-700 dark:text-slate-200">${fmt.format(val)}/mo</span>
+                </div>`).join('');
+            document.getElementById('total-cost-sum').textContent = fmt.format(total) + '/mo';
+            document.getElementById('income-needed-lbl').textContent = fmt.format(data.income_needed || 0) + '/yr';
+        }
+
+        // --- 5-YEAR ROI ---
+        function renderROIPanel(data, fmt) {
+            const card = document.getElementById('roi-card');
+            card.style.display = 'block';
+            const price     = data.valuation.estimated_value;
+            const rate      = (data.annual_rate || 4.0) / 100;
+            const val5      = price * Math.pow(1 + rate, 5);
+            const gain5     = val5 - price;
+            const downPaid  = price * 0.20;
+            const closingIn = price * 0.02;
+            const closingOut= val5  * 0.06;
+            const netGain   = gain5 - closingIn - closingOut;
+            const roi       = Math.round(netGain / (downPaid + closingIn) * 100);
+            const fmtK = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0,notation:'compact'});
+            const roiColor  = roi >= 30 ? '#10b981' : roi >= 0 ? '#3b82f6' : '#ef4444';
+            document.getElementById('roi-grid').innerHTML = `
+                <div class="text-center bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">Yr 5 Value</div>
+                    <div class="text-sm font-black text-slate-700 dark:text-slate-100">${fmtK.format(val5)}</div>
+                </div>
+                <div class="text-center bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">Net Gain</div>
+                    <div class="text-sm font-black" style="color:${roiColor}">${fmtK.format(netGain)}</div>
+                    <div class="text-[9px] text-slate-400">after costs</div>
+                </div>
+                <div class="text-center rounded-xl p-3" style="background:${roiColor}18">
+                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">Cash ROI</div>
+                    <div class="text-sm font-black" style="color:${roiColor}">${roi}%</div>
+                    <div class="text-[9px] text-slate-400">on equity</div>
+                </div>`;
+        }
+
+        // --- ENVIRONMENTAL RISK ---
+        function renderEnvRisk(risk) {
+            const card = document.getElementById('env-risk-card');
+            card.style.display = 'block';
+            if (risk === 'fire') {
+                card.style.background = 'rgba(239,68,68,0.08)';
+                card.style.border     = '1.5px solid rgba(239,68,68,0.25)';
+                card.style.color      = '#ef4444';
+                card.innerHTML = '🔥 Elevated wildfire risk area — verify with Cal Fire maps before purchasing.';
+            } else {
+                card.style.background = 'rgba(59,130,246,0.08)';
+                card.style.border     = '1.5px solid rgba(59,130,246,0.25)';
+                card.style.color      = '#3b82f6';
+                card.innerHTML = '🌊 Coastal flood zone proximity — check FEMA flood maps and insurance costs.';
+            }
+        }
+
+        // --- COMPARABLE TRACTS ---
+        function renderComps(comps, fmt) {
+            if (!comps || !comps.length) return;
+            document.getElementById('comps-card').style.display = 'block';
+            const fmt2 = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0});
+            document.getElementById('comps-table').innerHTML = comps.map((c, i) => `
+                <div class="flex justify-between items-center py-2 ${i < comps.length-1 ? 'border-b border-slate-100 dark:border-slate-700' : ''}">
+                    <div>
+                        <div class="text-[11px] font-black text-slate-700 dark:text-slate-200">${fmt2.format(c.median_home_value)}</div>
+                        <div class="text-[10px] text-slate-400">Income ${fmt2.format(c.median_income)} · ${c.dist_coast_km} km coast</div>
+                    </div>
+                    <div class="text-[10px] font-bold text-slate-400">${Math.round(c.pop_density).toLocaleString()} /km²</div>
+                </div>`).join('');
+        }
+
+        // --- PROPERTY TAX & WALK SCORE ---
+        function renderTaxWalk(tax, walkScore) {
+            document.getElementById('tax-walk-card').style.display = 'block';
+            if (tax) {
+                document.getElementById('ana-prop-tax-mo').textContent = '$' + tax.monthly.toLocaleString() + '/mo';
+                document.getElementById('ana-prop-tax-yr').textContent = '$' + tax.annual.toLocaleString() + '/yr';
+            }
+            if (walkScore !== undefined) {
+                const color = walkScore >= 70 ? '#10b981' : walkScore >= 50 ? '#f59e0b' : '#94a3b8';
+                const label = walkScore >= 90 ? "Walker's Paradise" : walkScore >= 70 ? 'Very Walkable' :
+                              walkScore >= 50 ? 'Somewhat Walkable' : walkScore >= 25 ? 'Car-Dependent' : 'Very Car-Dependent';
+                const el = document.getElementById('ana-walk-score');
+                el.textContent = walkScore;
+                el.style.color = color;
+                document.getElementById('ana-walk-label').textContent = label;
+                setTimeout(() => {
+                    document.getElementById('ana-walk-bar').style.width  = walkScore + '%';
+                    document.getElementById('ana-walk-bar').style.background = color;
+                }, 100);
+            }
+        }
+
+        // --- MARKET TEMPERATURE ---
+        function renderMarketTemp(temp) {
+            const badge = document.getElementById('ana-market-temp-badge');
+            badge.style.display = 'inline';
+            badge.textContent   = temp.label + (temp.trend_pct ? ` +${temp.trend_pct}%` : '');
+            badge.style.background = temp.color + '25';
+            badge.style.color      = temp.color;
         }
 
         // --- MAP LOGIC ---
@@ -1901,9 +2292,18 @@
             const beds  = document.getElementById('ana-beds').value   || 3;
             const baths = document.getElementById('ana-baths').value  || 2;
             const cond  = document.getElementById('ana-cond').value   || 'Avg';
+            // Sync panel search bar with address
+            document.getElementById('ana-addr-input').value = addr;
             showTab('analysis');
             updateAnalysisSubtitle(addr); // improvement #12
             fetchAIValuation(addr, sqft, beds, baths, cond);
+        }
+
+        function anaSearchFromPanel() {
+            const addr = document.getElementById('ana-addr-input').value.trim();
+            if (!addr) return;
+            document.getElementById('headerSearch').value = addr;
+            sendToAnalysis(addr);
         }
 
         // --- TRACKER LOGIC ---

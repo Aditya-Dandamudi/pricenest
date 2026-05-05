@@ -277,17 +277,21 @@ log.info(f"Spatial index built over {len(census_gdf):,} census tracts")
 _price_sorted   = np.sort(census_gdf['median_home_value'].values)
 _density_sorted = np.sort(census_gdf['pop_density'].values)
 _city_sorted    = np.sort(census_gdf['dist_city_km'].values)
+_income_sorted  = np.sort(census_gdf['median_income'].values)
 
 def _percentile_of(sorted_arr, value):
     return round(float(np.searchsorted(sorted_arr, value)) / len(sorted_arr) * 100, 1)
 
-# Lightweight KNN for neighborhood comp lookup (used in contributions only)
+# Lightweight KNN for neighborhood comp lookup
 comp_features = ['median_income', 'median_house_age', 'pop_density', 'dist_coast_km', 'dist_city_km']
 census_clean  = census_gdf[comp_features].fillna(census_gdf[comp_features].mean())
 _knn_scaler   = StandardScaler()
 _knn_scaled   = _knn_scaler.fit_transform(census_clean)
 knn_model     = NearestNeighbors(n_neighbors=8, algorithm='ball_tree').fit(_knn_scaled)
-log.info("KNN neighborhood model ready")
+
+# Pre-project census centroids once at startup for fast per-request geo-KNN radius filter
+_census_centroids_proj = census_gdf.to_crs(CRS_PROJ).geometry.centroid
+log.info(f"KNN neighborhood model ready ({len(census_gdf):,} tracts projected)")
 
 # Shoreline: GSHHS L1 polygons are land-area polygons, so distance() from an inland
 # point to the filled polygon = 0 (inside it). We need the exterior ring (boundary line)
@@ -422,6 +426,34 @@ def _rentcast_avm(address: str, sqft: int, beds: int, baths: float):
         log.warning(f"RentCast AVM unavailable: {e}")
     return None
 
+@lru_cache(maxsize=256)
+def _rentcast_rent(address: str, sqft: int, beds: int, baths: float):
+    """Call RentCast long-term rent AVM. Returns estimated monthly rent or None."""
+    if not RENTCAST_API_KEY:
+        return None
+    try:
+        r = requests.get(
+            'https://api.rentcast.io/v1/avm/rent/long-term',
+            headers={'X-Api-Key': RENTCAST_API_KEY},
+            params={
+                'address':       address,
+                'propertyType':  'Single Family',
+                'bedrooms':      int(beds),
+                'bathrooms':     float(baths),
+                'squareFootage': int(sqft),
+            },
+            timeout=6,
+        )
+        if r.status_code == 200:
+            d = r.json()
+            rent = d.get('rent') or d.get('rentZestimate') or d.get('price')
+            if rent and float(rent) > 200:
+                log.info(f"RentCast Rent: ${float(rent):,.0f}/mo for {address[:40]}")
+                return float(rent)
+    except Exception as e:
+        log.warning(f"RentCast Rent AVM unavailable: {e}")
+    return None
+
 geolocator = Nominatim(user_agent="pricenest_v2", timeout=5)
 
 # California bounding box — geopy expects (latitude, longitude) order, NOT (lon, lat)
@@ -505,6 +537,22 @@ def predict():
         u_cond = data.get('condition', 'Avg')
         if u_cond not in ('Fixer', 'Avg', 'Good', 'Mint'):
             u_cond = 'Avg'
+
+        # Optional property details for higher accuracy
+        try:
+            u_year_built = int(data['year_built']) if data.get('year_built') else None
+            if u_year_built and not (1800 <= u_year_built <= 2025):
+                u_year_built = None
+        except (ValueError, TypeError):
+            u_year_built = None
+
+        try:
+            u_lot_sqft = max(500.0, min(500_000.0, float(data.get('lot_size', 5000))))
+        except (ValueError, TypeError):
+            u_lot_sqft = 5000.0
+
+        u_upgrades = [u for u in data.get('upgrades', [])
+                      if u in ('pool', 'solar', 'new_kitchen', 'garage', 'new_roof', 'renovated')]
 
         # Geocoding — cached so repeat addresses skip the network call
         location = _geocode_cached(address)
@@ -610,20 +658,42 @@ def predict():
         # Ensemble predict — log(price) → exp → dollars
         p_base = float(np.exp(_ensemble_predict(pd.DataFrame([input_dict]))))
 
-        # KNN neighborhood comps
+        # KNN neighborhood comps — geographically constrained
+        # Only consider census tracts within 35 km so we never pull Sacramento comps
+        # for a Santa Monica query. Fall back to global KNN only in sparse rural areas.
         q_vals  = {'median_income': _inc, 'median_house_age': _age, 'pop_density': _den,
                    'dist_coast_km': dist_coast, 'dist_city_km': dist_city}
         q_scale = _knn_scaler.transform(pd.DataFrame([q_vals])[comp_features])
-        _, idxs = knn_model.kneighbors(q_scale, n_neighbors=7)
-        # At inference time the query is NOT a training point — include all 7 neighbors
-        p_knn   = float(np.mean([census_gdf.iloc[i]['median_home_value'] for i in idxs[0]]))
+
+        _dists_m     = _census_centroids_proj.distance(p_m)
+        _nearby_mask = (_dists_m < 35_000).values
+        _n_nearby    = int(_nearby_mask.sum())
+
+        if _n_nearby >= 7:
+            _nb_idx     = np.where(_nearby_mask)[0]
+            _nb_clean   = census_gdf.iloc[_nb_idx][comp_features].fillna(census_gdf[comp_features].mean())
+            _nb_scaled  = _knn_scaler.transform(_nb_clean)
+            _nb_knn     = NearestNeighbors(n_neighbors=min(7, _n_nearby), algorithm='ball_tree').fit(_nb_scaled)
+            _, _nb_idxs = _nb_knn.kneighbors(q_scale)
+            p_knn       = float(np.mean([census_gdf.iloc[_nb_idx[i]]['median_home_value'] for i in _nb_idxs[0]]))
+            log.info(f"Geo-KNN ({_n_nearby} nearby tracts): p_knn=${p_knn:,.0f}")
+        else:
+            _, _g_idxs = knn_model.kneighbors(q_scale, n_neighbors=7)
+            p_knn      = float(np.mean([census_gdf.iloc[i]['median_home_value'] for i in _g_idxs[0]]))
+            log.info(f"Sparse area — global KNN: p_knn=${p_knn:,.0f}")
 
         # Census tract median — ground-truth anchor for this neighborhood
         tract_anchor = float(t_data.get('median_home_value', p_base))
 
-        # Three-way blend: ensemble ML + KNN neighborhood comps + tract anchor
-        # p_knn was previously computed but never used — now included at 20% weight
-        p_stacked = p_base * 0.30 + p_knn * 0.20 + tract_anchor * 0.50
+        # Dynamic blend weights — ML gets more weight when it agrees with the local anchor;
+        # KNN weight collapses when it is a big outlier vs the tract anchor.
+        _base_tract_ratio = abs(p_base - tract_anchor) / max(tract_anchor, 1.0)
+        _knn_tract_ratio  = abs(p_knn  - tract_anchor) / max(tract_anchor, 1.0)
+        w_knn   = 0.05 if _knn_tract_ratio  > 0.40 else 0.20
+        w_ml    = round(max(0.20, min(0.45, 0.30 + 0.12 * (1.0 - min(1.0, _base_tract_ratio * 2)))), 3)
+        w_tract = round(1.0 - w_ml - w_knn, 3)
+        p_stacked = p_base * w_ml + p_knn * w_knn + tract_anchor * w_tract
+        log.info(f"Blend: ML({w_ml:.0%})={p_base:.0f} KNN({w_knn:.0%})={p_knn:.0f} Tract({w_tract:.0%})={tract_anchor:.0f}")
 
         # ── County-level appreciation (CAR Q4 2024 vs ACS 2020) ─────────────
         # Look up the county from the geocoded address first; fall back to a
@@ -644,8 +714,14 @@ def predict():
         # ── Property adjustments (additive — no multiplicative stacking) ──────
         CA_AVG_SQFT = 1650.0
 
-        # 1. Square footage — moderate curve so large homes don't explode the price
-        size_adj = (u_sqft / CA_AVG_SQFT) ** 0.48 - 1.0
+        # 1. Square footage — exponent scales with price tier: luxury buyers pay a larger
+        #    premium per marginal sqft than budget-market buyers.
+        if   tract_anchor < 400_000:   sqft_exp = 0.38
+        elif tract_anchor < 700_000:   sqft_exp = 0.45
+        elif tract_anchor < 1_200_000: sqft_exp = 0.52
+        elif tract_anchor < 2_000_000: sqft_exp = 0.58
+        else:                          sqft_exp = 0.65
+        size_adj = (u_sqft / CA_AVG_SQFT) ** sqft_exp - 1.0
 
         # 2. Bedrooms vs 3bd baseline
         bed_adj = max(-0.15, min(0.18, (u_beds - 3.0) * 0.028))
@@ -656,23 +732,54 @@ def predict():
         # 4. Condition
         cond_adj = {'Fixer': -0.13, 'Avg': 0.0, 'Good': 0.07, 'Mint': 0.15}[u_cond]
 
-        # 5. Housing age (non-linear: newer is better up to a point)
-        house_age = float(t_data['median_house_age'])
-        if   house_age < 10:  age_adj =  0.04
+        # 5. Housing age — use user-supplied year_built if provided, else tract median
+        if u_year_built:
+            house_age = max(0, 2025 - u_year_built)
+        else:
+            house_age = float(t_data['median_house_age'])
+        if   house_age <  5:  age_adj =  0.06   # brand-new premium
+        elif house_age < 10:  age_adj =  0.04
         elif house_age < 20:  age_adj =  0.02
         elif house_age < 35:  age_adj =  0.00
         elif house_age < 55:  age_adj = -0.02
         elif house_age < 75:  age_adj = -0.04
         else:                 age_adj =  0.01   # vintage premium in older neighborhoods
 
-        # Total property adjustment — hard cap ±28%
-        total_adj = max(-0.28, min(0.28, size_adj + bed_adj + bath_adj + cond_adj + age_adj))
+        # 6. Lot size — larger lots command a premium; effect dampens in dense urban areas
+        CA_AVG_LOT  = 6_098.0  # ~0.14 acres, CA residential median
+        _lot_impact = max(0.2, 1.0 - min(0.8, _den / 10_000))  # low in dense areas
+        lot_adj = max(-0.08, min(0.12, (u_lot_sqft / CA_AVG_LOT - 1.0) * 0.15 * _lot_impact))
 
-        # ── Model signal — blended ML insight, tightly dampened ──────────────
-        # The ensemble adds cross-CA pattern recognition but is not allowed to
-        # significantly override the price-calibrated market_base.
+        # 7. Upgrades — each premium feature adds to value, capped at 12% combined
+        _UPGRADE_ADJ = {'pool': 0.04, 'solar': 0.02, 'new_kitchen': 0.03,
+                        'garage': 0.03, 'new_roof': 0.015, 'renovated': 0.05}
+        upgrades_adj = min(0.12, sum(_UPGRADE_ADJ.get(u, 0) for u in u_upgrades))
+
+        # 8. School quality proxy — income percentile predicts school district quality in CA
+        _inc_pct = _percentile_of(_income_sorted, _inc)
+        if   _inc_pct >= 85: school_adj =  0.06
+        elif _inc_pct >= 65: school_adj =  0.03
+        elif _inc_pct >= 40: school_adj =  0.00
+        elif _inc_pct >= 20: school_adj = -0.02
+        else:                school_adj = -0.04
+
+        # 9. Environmental risk — modest discount for high fire or flood exposure
+        _fire_risk  = dist_coast > 60 and _den < 600   # inland, sparse = elevated fire risk
+        _flood_risk = dist_coast < 0.8                  # right on the coast = flood zone
+        env_adj = -0.03 if _fire_risk else (-0.015 if _flood_risk else 0.0)
+
+        # Total property adjustment — hard cap ±35%
+        total_adj = max(-0.35, min(0.35,
+            size_adj + bed_adj + bath_adj + cond_adj + age_adj +
+            lot_adj + upgrades_adj + school_adj + env_adj))
+
+        # ── Model signal — blended ML insight, dynamically dampened ─────────
+        # Cap expands when ML and tract agree: up to ±14% when aligned, down to ±6%
+        # when they diverge. Prevents the model from wildly overriding local prices
+        # while still allowing meaningful signal in well-calibrated markets.
+        _ml_cap      = max(0.06, min(0.14, 0.14 * (1.0 - min(1.0, _base_tract_ratio))))
         raw_signal   = (p_stacked - tract_anchor) * 0.15
-        model_signal = max(-market_base * 0.08, min(market_base * 0.08, raw_signal))
+        model_signal = max(-market_base * _ml_cap, min(market_base * _ml_cap, raw_signal))
 
         f_price = (market_base * (1.0 + total_adj)) + model_signal
 
@@ -760,18 +867,115 @@ def predict():
         else:
             photo_url = None
 
+        rc_rent = _rentcast_rent(location.address, int(u_sqft), int(u_beds), u_baths)
+        rent_yield = round(rc_rent * 12 / f_price * 100, 2) if rc_rent else None
+
+        # ── Dynamic confidence based on signal agreement ──────────────────────
+        # Collect all price signals used to form the estimate. High spread between
+        # signals → wider range + lower confidence; tight agreement → narrow range.
+        _raw_signals = [p_base, p_knn, tract_anchor]
+        if rc_price:
+            _raw_signals.append(rc_price)
+        _sig_mean   = float(np.mean(_raw_signals))
+        _sig_cv     = float(np.std(_raw_signals)) / max(_sig_mean, 1.0)
+        _half_range = max(0.05, min(0.18, _sig_cv * 0.70))
+        confidence_pct = round(max(50.0, min(98.0, (1.0 - _sig_cv * 1.4) * 100)), 1)
+        conf_label = "High" if confidence_pct >= 85 else "Medium" if confidence_pct >= 70 else "Low"
+        log.info(f"Confidence: {conf_label} ({confidence_pct}%), CV={_sig_cv:.3f}, range ±{_half_range:.1%}")
+
+        # ── Derived display metrics ───────────────────────────────────────────
+        price_per_sqft = round(f_price / max(1.0, u_sqft), 0)
+
+        # HOA estimate — dense/coastal areas skew toward condos with HOA fees
+        if   _den > 6_000 and dist_coast < 15: hoa_monthly = 550
+        elif _den > 6_000:                     hoa_monthly = 380
+        elif _den > 2_500:                     hoa_monthly = 220
+        else:                                   hoa_monthly = 0
+
+        # County appreciation factor (needed for annual_rate and market_temp)
+        _factor = _COUNTY_FACTORS.get(_county, 1.05)
+
+        # Annual appreciation rate: annualise the 2-year county factor
+        annual_rate = round((_factor ** 0.5 - 1.0) * 100, 2)
+
+        # Property tax: CA effective rate ~1.1% (Prop 13 base + direct assessments)
+        prop_tax_annual  = round(f_price * 0.011, 0)
+        prop_tax_monthly = round(prop_tax_annual / 12, 0)
+
+        # Income needed: 28% front-end DTI on 30yr mortgage at current avg rate (~6.9%)
+        _down      = f_price * 0.20
+        _loan      = f_price - _down
+        _mo_rate   = 0.069 / 12
+        _mo_pmt    = _loan * _mo_rate / (1 - (1 + _mo_rate) ** -360)
+        _mo_total  = _mo_pmt + prop_tax_monthly + round(f_price * 0.004 / 12, 0)  # + insurance
+        income_needed = round(_mo_total / 0.28 * 12, 0)
+
+        # Walk score — density-based proxy (higher density = more walkable)
+        if   _den > 8_000: walk_score = min(99, 75 + int((_den - 8_000) / 500))
+        elif _den > 3_000: walk_score = int(60 + (_den - 3_000) / 250)
+        elif _den > 1_000: walk_score = int(40 + (_den - 1_000) / 100)
+        else:              walk_score = max(10, int(_den / 50))
+        walk_score = int(min(99, walk_score))
+
+        # Market temperature: combines county appreciation + price percentile
+        _price_pct = _percentile_of(_price_sorted, tract_anchor)
+        if   _factor >= 1.08 and _price_pct < 65: market_temp = {"label": "Hot 🔥",   "color": "#ef4444"}
+        elif _factor >= 1.05 and _price_pct < 80: market_temp = {"label": "Warm ↑",   "color": "#f97316"}
+        elif _factor >= 1.02:                     market_temp = {"label": "Stable →",  "color": "#64748b"}
+        else:                                     market_temp = {"label": "Cooling ↓", "color": "#3b82f6"}
+        market_temp["trend_pct"] = round((_factor - 1.0) * 100, 1)
+
+        # Comparable tracts — top 3 from whichever KNN path ran
+        try:
+            if _n_nearby >= 7:
+                _comp_rows = [census_gdf.iloc[_nb_idx[i]] for i in _nb_idxs[0][:3]]
+            else:
+                _comp_rows = [census_gdf.iloc[i] for i in _g_idxs[0][:3]]
+            comp_details = [
+                {
+                    "median_home_value": round(float(r['median_home_value']), -3),
+                    "median_income":     round(float(r['median_income']), -2),
+                    "dist_coast_km":     round(float(r.get('dist_coast_km', 0)), 1),
+                    "pop_density":       round(float(r['pop_density']), 0),
+                }
+                for r in _comp_rows
+            ]
+        except Exception:
+            comp_details = []
+
         return jsonify({
             "status": "success",
             "valuation": {
-                "estimated_value": round(f_price, -3),
-                "range_low":       round(f_price * 0.93, -3),
-                "range_high":      round(f_price * 1.07, -3),
+                "estimated_value":  round(f_price, -3),
+                "range_low":        round(f_price * (1.0 - _half_range), -3),
+                "range_high":       round(f_price * (1.0 + _half_range), -3),
+                "confidence_score": confidence_pct,
+                "confidence_label": conf_label,
+                "price_per_sqft":   price_per_sqft,
+            },
+            "signals": {
+                "ml_ensemble":  round(p_base, 0),
+                "knn_comps":    round(p_knn, 0),
+                "tract_anchor": round(tract_anchor, 0),
+                "rentcast":     round(rc_price, 0) if rc_price else None,
+                "weights": {"ml": round(w_ml * 100), "knn": round(w_knn * 100), "tract": round(w_tract * 100)},
             },
             "calc_base": {
                 "market_base":  round(market_base, 0),
                 "model_signal": round(model_signal, 0),
                 "age_adj":      age_adj,
             },
+            "property_tax":    {"annual": prop_tax_annual, "monthly": prop_tax_monthly},
+            "hoa_estimate":    hoa_monthly,
+            "annual_rate":     annual_rate,
+            "income_needed":   round(income_needed, -3),
+            "school_quality":  round(_inc_pct, 1),
+            "env_risk":        "fire" if _fire_risk else ("flood" if _flood_risk else None),
+            "walk_score":      walk_score,
+            "market_temp":     market_temp,
+            "comp_details":    comp_details,
+            "rent_estimate": round(rc_rent, 0) if rc_rent else None,
+            "rent_yield":    rent_yield,
             "location": {"lat": lat, "lon": lon, "address": location.address},
             "neighborhood": {
                 "price_percentile":   _percentile_of(_price_sorted, tract_median),
