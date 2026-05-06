@@ -732,13 +732,17 @@
                                     <span id="ana-range-high-lbl" class="text-[9px] font-bold text-blue-400">—</span>
                                 </div>
                             </div>
-                            <!-- Recommendation + score -->
+                            <!-- Recommendation + score + grade -->
                             <div class="val-rec-bar">
                                 <div class="flex items-center gap-2">
                                     <div id="ana-rec-dot" class="w-2 h-2 rounded-full" style="background:#10b981"></div>
                                     <span id="ana-rec-label" class="text-[11px] font-black" style="color:#10b981">—</span>
+                                    <span id="ana-vs-median-badge" class="text-[9px] font-black text-slate-400" style="display:none"></span>
                                 </div>
-                                <span id="ana-invest-score" class="text-[11px] font-black text-slate-400">Score: —</span>
+                                <div class="flex items-center gap-2">
+                                    <span id="ana-grade-badge" class="text-[10px] font-black px-2 py-0.5 rounded-full" style="display:none"></span>
+                                    <span id="ana-invest-score" class="text-[11px] font-black text-slate-400">Score: —</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -933,6 +937,13 @@
                 <div id="roi-card" class="glass p-5" style="display:none;">
                     <h3 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-3">5-Year ROI Estimate</h3>
                     <div class="grid grid-cols-3 gap-3" id="roi-grid"></div>
+                </div>
+
+                <!-- Equity Growth Timeline -->
+                <div id="equity-card" class="glass p-5" style="display:none;">
+                    <h3 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-1">Equity Growth</h3>
+                    <p class="text-[10px] text-slate-400 mb-3">Down payment + principal paydown + appreciation</p>
+                    <div id="equity-table" class="space-y-2"></div>
                 </div>
 
                 <!-- Environmental risk banner -->
@@ -1387,6 +1398,11 @@
             document.getElementById('offer-strategy-card').style.display  = 'none';
             document.getElementById('rate-sensitivity-card').style.display = 'none';
             document.getElementById('afford-card').style.display          = 'none';
+            document.getElementById('equity-card').style.display          = 'none';
+            const vmbEl = document.getElementById('ana-vs-median-badge');
+            if (vmbEl) vmbEl.style.display = 'none';
+            const gbEl = document.getElementById('ana-grade-badge');
+            if (gbEl) gbEl.style.display = 'none';
             document.getElementById('ana-market-temp-badge').style.display = 'none';
             document.getElementById('ana-ppsf-badge').style.display = 'none';
 
@@ -1455,6 +1471,13 @@
                     if (data.offer_strategy)    renderOfferStrategy(data.offer_strategy, data.valuation.estimated_value, formatter);
                     renderRateTable(data.valuation.estimated_value, formatter);
                     renderAffordCard(data.valuation.estimated_value, formatter);
+                    renderEquityCard(data, formatter);
+                    renderVsMedianBadge(data);
+                    renderPropertyGrade(data);
+
+                    // Shareable URL — encode analysis params so the link re-runs on visit
+                    const _sp = new URLSearchParams({a: address, sqft: sqft||1800, beds: beds||3, baths: baths||2, cond: cond||'Avg'});
+                    history.replaceState(null, '', '?' + _sp.toString());
                     if (data.valuation.price_per_sqft) {
                         const ppsfEl = document.getElementById('ana-ppsf-badge');
                         ppsfEl.textContent = '$' + data.valuation.price_per_sqft.toLocaleString() + '/sqft';
@@ -1913,21 +1936,66 @@
             navigator.clipboard ? navigator.clipboard.writeText(text).then(() => showToast('Report copied to clipboard!')) : showToast('Copy not supported');
         }
 
-        // --- TOTAL COST OF OWNERSHIP ---
+        // --- TOTAL COST OF OWNERSHIP (interactive) ---
+        let _tcData = null, _tcDownPct = 20, _tcTerm = 30;
+
         function renderTotalCost(data, fmt) {
+            _tcData = data;
             const card = document.getElementById('total-cost-card');
             card.style.display = 'block';
-            const price = data.valuation.estimated_value;
-            const down  = price * 0.20;
+            // Inject pill controls once
+            if (!document.getElementById('tc-down-pills')) {
+                const header = card.querySelector('div.flex.items-center');
+                const controls = document.createElement('div');
+                controls.className = 'flex gap-2 items-center flex-wrap mt-2 mb-1';
+                controls.innerHTML = `
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Down:</span>
+                    ${[5,10,15,20].map(p => `<button id="tc-dp-${p}" onclick="setTCDown(${p})"
+                        class="text-[9px] font-black px-2 py-0.5 rounded-full border transition"
+                        style="border-color:#e2e8f0;${p===20?'background:#0B1C3E;color:#FDBB11;border-color:#0B1C3E;':''}">${p}%</button>`).join('')}
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider ml-2">Term:</span>
+                    <button id="tc-t-15" onclick="setTCTerm(15)" class="text-[9px] font-black px-2 py-0.5 rounded-full border" style="border-color:#e2e8f0;">15yr</button>
+                    <button id="tc-t-30" onclick="setTCTerm(30)" class="text-[9px] font-black px-2 py-0.5 rounded-full border" style="background:#0B1C3E;color:#FDBB11;border-color:#0B1C3E;">30yr</button>`;
+                controls.id = 'tc-down-pills';
+                header.after(controls);
+            }
+            updateTotalCost();
+        }
+
+        function setTCDown(pct) {
+            _tcDownPct = pct;
+            [5,10,15,20].forEach(p => {
+                const b = document.getElementById('tc-dp-' + p);
+                if (b) { b.style.background = p===pct ? '#0B1C3E' : ''; b.style.color = p===pct ? '#FDBB11' : ''; b.style.borderColor = p===pct ? '#0B1C3E' : '#e2e8f0'; }
+            });
+            updateTotalCost();
+        }
+
+        function setTCTerm(yr) {
+            _tcTerm = yr;
+            [15, 30].forEach(t => {
+                const b = document.getElementById('tc-t-' + t);
+                if (b) { b.style.background = t===yr ? '#0B1C3E' : ''; b.style.color = t===yr ? '#FDBB11' : ''; b.style.borderColor = t===yr ? '#0B1C3E' : '#e2e8f0'; }
+            });
+            updateTotalCost();
+        }
+
+        function updateTotalCost() {
+            if (!_tcData) return;
+            const fmt   = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0});
+            const price = _tcData.valuation.estimated_value;
+            const down  = price * _tcDownPct / 100;
             const loan  = price - down;
             const rate  = 0.069 / 12;
-            const pmt   = Math.round(loan * rate / (1 - Math.pow(1 + rate, -360)));
-            const tax   = (data.property_tax || {}).monthly || 0;
+            const n     = _tcTerm * 12;
+            const pmt   = Math.round(loan * rate / (1 - Math.pow(1 + rate, -n)));
+            const tax   = (_tcData.property_tax || {}).monthly || 0;
             const ins   = Math.round(price * 0.004 / 12);
-            const hoa   = data.hoa_estimate || 0;
+            const hoa   = _tcData.hoa_estimate || 0;
             const total = pmt + tax + ins + hoa;
-            const rows  = [
-                ['Mortgage (20% down, 6.9%)', pmt],
+            const incNeeded = Math.round(total / 0.28 * 12 / 1000) * 1000;
+            const rows = [
+                [`Mortgage (${_tcDownPct}% down, 6.9%, ${_tcTerm}yr)`, pmt],
                 ['Property Tax', tax],
                 ['Homeowner Insurance', ins],
                 ...(hoa ? [['HOA (est.)', hoa]] : []),
@@ -1937,7 +2005,7 @@
                     <span>${label}</span><span class="font-bold text-slate-700 dark:text-slate-200">${fmt.format(val)}/mo</span>
                 </div>`).join('');
             document.getElementById('total-cost-sum').textContent = fmt.format(total) + '/mo';
-            document.getElementById('income-needed-lbl').textContent = fmt.format(data.income_needed || 0) + '/yr';
+            document.getElementById('income-needed-lbl').textContent = fmt.format(incNeeded) + '/yr';
         }
 
         // --- 5-YEAR ROI ---
@@ -2778,8 +2846,96 @@
             document.getElementById('compare-modal').style.display = 'none';
         }
 
-        // Init FAB on page load
-        document.addEventListener('DOMContentLoaded', updateCompareFAB);
+        // ── Equity Growth Timeline ────────────────────────────────────────────
+        function renderEquityCard(data, fmt) {
+            const card = document.getElementById('equity-card');
+            const price = data.valuation.estimated_value;
+            const annualRate = (data.annual_rate || 4.0) / 100;
+            const downPct = _tcDownPct || 20;
+            const down = price * downPct / 100;
+            const loan = price - down;
+            const moRate = 0.069 / 12;
+            const milestones = [1, 5, 10, 20];
+            const maxEquity = price * Math.pow(1 + annualRate, 20) * 0.8; // approx full equity at yr20
+
+            const rows = milestones.map(yr => {
+                const n = yr * 12;
+                const remaining = loan * Math.pow(1 + moRate, n) - (loan * moRate / (1 - Math.pow(1 + moRate, -360))) * (Math.pow(1 + moRate, n) - 1) / moRate;
+                const principalPaid = Math.max(0, loan - remaining);
+                const appreciatedValue = price * Math.pow(1 + annualRate, yr);
+                const equity = down + principalPaid + (appreciatedValue - price);
+                const pct = Math.min(100, Math.round(equity / appreciatedValue * 100));
+                const color = pct < 25 ? '#f59e0b' : pct < 50 ? '#3b82f6' : '#10b981';
+                return `<div>
+                    <div class="flex justify-between text-[10px] mb-0.5">
+                        <span class="font-black text-slate-500 dark:text-slate-400">Year ${yr}</span>
+                        <span class="font-black" style="color:${color}">${fmt.format(Math.round(equity/1000)*1000)} <span class="text-slate-400 font-semibold">(${pct}% equity)</span></span>
+                    </div>
+                    <div class="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-700" style="width:${pct}%;background:${color}"></div>
+                    </div>
+                </div>`;
+            }).join('');
+            document.getElementById('equity-table').innerHTML = rows;
+            card.style.display = 'block';
+        }
+
+        // ── vs. Local Median Badge ────────────────────────────────────────────
+        function renderVsMedianBadge(data) {
+            const el = document.getElementById('ana-vs-median-badge');
+            if (!el || !data.neighborhood) return;
+            const pct = data.neighborhood.vs_median_pct;
+            if (pct == null) return;
+            const sign = pct >= 0 ? '+' : '';
+            el.textContent = `${sign}${pct}% vs local`;
+            el.style.color = pct > 10 ? '#ef4444' : pct < -5 ? '#10b981' : '#94a3b8';
+            el.style.display = 'inline';
+        }
+
+        // ── Property Grade ────────────────────────────────────────────────────
+        function renderPropertyGrade(data) {
+            const el = document.getElementById('ana-grade-badge');
+            if (!el) return;
+            const rate   = data.annual_rate || 3;
+            const conf   = data.valuation.confidence_score || 60;
+            const school = data.school_quality || 50;
+            const vsPct  = (data.neighborhood || {}).vs_median_pct || 0;
+            // Score components: appreciation weight, confidence, school, relative value
+            const score = (rate / 8 * 30) + (conf / 100 * 25) + (school / 100 * 25) + (Math.max(0, (20 - vsPct) / 35) * 20);
+            const [grade, bg, fg] =
+                score >= 75 ? ['A', '#dcfce7', '#15803d'] :
+                score >= 60 ? ['B', '#dbeafe', '#1d4ed8'] :
+                score >= 45 ? ['C', '#fef9c3', '#92400e'] :
+                              ['D', '#fee2e2', '#dc2626'];
+            el.textContent = 'Grade ' + grade;
+            el.style.background = bg;
+            el.style.color = fg;
+            el.style.display = 'inline';
+        }
+
+        // ── Auto-load from shareable URL ──────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCompareFAB();
+            const qs = new URLSearchParams(location.search);
+            const addr = qs.get('a');
+            if (addr) {
+                // Switch to Analysis tab
+                const tabs = document.querySelectorAll('[data-tab]');
+                tabs.forEach(t => t.classList.remove('active'));
+                const aTab = document.querySelector('[data-tab="analysis"]');
+                if (aTab) aTab.classList.add('active');
+                document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+                const aPanel = document.getElementById('tab-analysis');
+                if (aPanel) aPanel.style.display = 'block';
+                // Fill in form fields
+                document.getElementById('ana-addr-input').value = addr;
+                if (qs.get('sqft')) document.getElementById('ana-sqft').value = qs.get('sqft');
+                if (qs.get('beds')) document.getElementById('ana-beds').value = qs.get('beds');
+                if (qs.get('baths')) document.getElementById('ana-baths').value = qs.get('baths');
+                if (qs.get('cond')) document.getElementById('ana-cond').value = qs.get('cond');
+                setTimeout(() => updateValuation(), 600);
+            }
+        });
     </script>
 
     <!-- Save & Compare: floating button -->
