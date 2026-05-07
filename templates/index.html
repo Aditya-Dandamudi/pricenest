@@ -1969,6 +1969,11 @@
                 if (b) { b.style.background = p===pct ? '#0B1C3E' : ''; b.style.color = p===pct ? '#FDBB11' : ''; b.style.borderColor = p===pct ? '#0B1C3E' : '#e2e8f0'; }
             });
             updateTotalCost();
+            // Re-render equity card so equity bars reflect the new down payment
+            if (_lastValData) {
+                const fmt = new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0});
+                renderEquityCard(_lastValData, fmt);
+            }
         }
 
         function setTCTerm(yr) {
@@ -2919,14 +2924,8 @@
             const qs = new URLSearchParams(location.search);
             const addr = qs.get('a');
             if (addr) {
-                // Switch to Analysis tab
-                const tabs = document.querySelectorAll('[data-tab]');
-                tabs.forEach(t => t.classList.remove('active'));
-                const aTab = document.querySelector('[data-tab="analysis"]');
-                if (aTab) aTab.classList.add('active');
-                document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
-                const aPanel = document.getElementById('tab-analysis');
-                if (aPanel) aPanel.style.display = 'block';
+                // Switch to Analysis tab using the existing tab system
+                if (typeof showTab === 'function') showTab('analysis');
                 // Fill in form fields
                 document.getElementById('ana-addr-input').value = addr;
                 if (qs.get('sqft')) document.getElementById('ana-sqft').value = qs.get('sqft');
