@@ -758,7 +758,7 @@
                         </div>
                         <div>
                             <label class="inp-label">Rate %</label>
-                            <input type="number" id="ana-rate" value="6.5" oninput="anaRunCalc()" class="inp">
+                            <input type="number" id="ana-rate" value="6.5" class="inp" oninput="anaRunCalc(); if(_lastValData){const _f=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); renderRateTable(_lastValData.valuation.estimated_value,_f);}">
                         </div>
                     </div>
                     <div>
@@ -1757,6 +1757,15 @@
             // Update buy/rent chart and forecast
             anaRunCalc();
             if (forecastChart) renderForecastChart(price, fmt, _lastValData && _lastValData.annual_rate);
+
+            // Sync financial cards to the new local price
+            if (_lastValData) {
+                _lastValData.valuation.estimated_value = price;
+                _tcData = _lastValData;
+                updateTotalCost();
+                renderROIPanel(_lastValData, fmt);
+                renderEquityCard(_lastValData, fmt);
+            }
         }
 
         // --- NEIGHBORHOOD INTELLIGENCE ---
