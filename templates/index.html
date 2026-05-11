@@ -758,7 +758,7 @@
                         </div>
                         <div>
                             <label class="inp-label">Rate %</label>
-                            <input type="number" id="ana-rate" value="6.5" class="inp" oninput="anaRunCalc(); if(_lastValData){const _f=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); renderRateTable(_lastValData.valuation.estimated_value,_f);}">
+                            <input type="number" id="ana-rate" value="6.5" class="inp" oninput="anaRunCalc(); if(_lastValData){const _f=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); renderRateTable(_lastValData.valuation.estimated_value,_f); updateTotalCost();}">
                         </div>
                     </div>
                     <div>
@@ -1720,7 +1720,8 @@
             const cond  = document.getElementById('ana-cond').value || 'Avg';
 
             const CA_AVG_SQFT = 1650;
-            const size_adj = Math.pow(sqft / CA_AVG_SQFT, 0.48) - 1.0;
+            const sqftExp  = _calcBase.sqft_exp || 0.48;
+            const size_adj = Math.pow(sqft / CA_AVG_SQFT, sqftExp) - 1.0;
             const bed_adj  = Math.max(-0.15, Math.min(0.18, (beds  - 3.0) * 0.028));
             const bath_adj = Math.max(-0.08, Math.min(0.12, (baths - 2.0) * 0.018));
             const cond_adj = { Fixer: -0.13, Avg: 0.0, Good: 0.07, Mint: 0.15 }[cond] ?? 0;
@@ -2000,7 +2001,8 @@
             const price = _tcData.valuation.estimated_value;
             const down  = price * _tcDownPct / 100;
             const loan  = price - down;
-            const rate  = 0.069 / 12;
+            const annualRate = parseFloat(document.getElementById('ana-rate').value) || 6.9;
+            const rate  = annualRate / 100 / 12;
             const n     = _tcTerm * 12;
             const pmt   = Math.round(loan * rate / (1 - Math.pow(1 + rate, -n)));
             const tax   = (_tcData.property_tax || {}).monthly || 0;
@@ -2009,7 +2011,7 @@
             const total = pmt + tax + ins + hoa;
             const incNeeded = Math.round(total / 0.28 * 12 / 1000) * 1000;
             const rows = [
-                [`Mortgage (${_tcDownPct}% down, 6.9%, ${_tcTerm}yr)`, pmt],
+                [`Mortgage (${_tcDownPct}% down, ${annualRate.toFixed(1)}%, ${_tcTerm}yr)`, pmt],
                 ['Property Tax', tax],
                 ['Homeowner Insurance', ins],
                 ...(hoa ? [['HOA (est.)', hoa]] : []),

@@ -980,6 +980,7 @@ def predict():
                 "market_base":  round(market_base, 0),
                 "model_signal": round(model_signal, 0),
                 "age_adj":      age_adj,
+                "sqft_exp":     sqft_exp,
             },
             "property_tax":    {"annual": prop_tax_annual, "monthly": prop_tax_monthly},
             "hoa_estimate":    hoa_monthly,
