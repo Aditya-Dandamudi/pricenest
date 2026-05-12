@@ -232,16 +232,51 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-RENTCAST_API_KEY   = os.environ.get("RENTCAST_API_KEY", "")
+RENTCAST_API_KEY    = os.environ.get("RENTCAST_API_KEY", "")
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
-MODEL_PATH    = 'price_nest_model.joblib'
-FEATURES_PATH = 'model_features.joblib'
-META_PATH     = 'meta_model.joblib'
+MODEL_PATH       = 'price_nest_model.joblib'
+FEATURES_PATH    = 'model_features.joblib'
+META_PATH        = 'meta_model.joblib'
 META_SCALER_PATH = 'meta_scaler.joblib'
-DATASET_PATH  = "data/training_dataset.geojson"
-SHORELINE_PATH = "data/shoreline/GSHHS_shp/h/GSHHS_h_L1.shp"
-CRS_PROJ  = "EPSG:3310"
+DATASET_PATH     = "data/training_dataset.geojson"
+SHORELINE_ZIP    = "data/shoreline_gshhg.zip"
+SHORELINE_PATH   = "data/shoreline/GSHHS_shp/h/GSHHS_h_L1.shp"
+CRS_PROJ   = "EPSG:3310"
 CRS_LATLON = "EPSG:4326"
+
+# ── Startup: download large files from GitHub Release if not present ──────────
+_GH_RELEASE = os.environ.get(
+    "MODEL_BASE_URL",
+    "https://github.com/Aditya-Dandamudi/pricenest/releases/download/v1.0"
+)
+
+def _fetch(url: str, dest: str) -> None:
+    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+    log.info(f"Downloading {dest} from {url} ...")
+    tmp = dest + ".tmp"
+    with requests.get(url, stream=True, timeout=300) as r:
+        r.raise_for_status()
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                f.write(chunk)
+    os.replace(tmp, dest)
+    log.info(f"Saved {dest} ({os.path.getsize(dest) // 1_048_576} MB)")
+
+for _path, _url in [
+    (MODEL_PATH,    f"{_GH_RELEASE}/price_nest_model.joblib"),
+    (DATASET_PATH,  f"{_GH_RELEASE}/training_dataset.geojson"),
+    (SHORELINE_ZIP, f"{_GH_RELEASE}/shoreline_gshhg.zip"),
+]:
+    if not os.path.exists(_path):
+        _fetch(_url, _path)
+
+# Extract shoreline zip if the shapefile is missing
+if not os.path.exists(SHORELINE_PATH) and os.path.exists(SHORELINE_ZIP):
+    import zipfile
+    log.info("Extracting shoreline archive...")
+    with zipfile.ZipFile(SHORELINE_ZIP) as _z:
+        _z.extractall("data/shoreline")
+    log.info("Shoreline extracted.")
 
 log.info("Loading model assets...")
 _base_learners = joblib.load(MODEL_PATH)   # list of (name, estimator) tuples

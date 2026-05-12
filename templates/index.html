@@ -2078,14 +2078,22 @@
             if (!comps || !comps.length) return;
             document.getElementById('comps-card').style.display = 'block';
             const fmt2 = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0});
-            document.getElementById('comps-table').innerHTML = comps.map((c, i) => `
-                <div class="flex justify-between items-center py-2 ${i < comps.length-1 ? 'border-b border-slate-100 dark:border-slate-700' : ''}">
+            const estVal = _lastValData && _lastValData.valuation.estimated_value;
+            document.getElementById('comps-table').innerHTML = comps.map((c, i) => {
+                const diff = estVal ? Math.round((c.median_home_value / estVal - 1) * 100) : null;
+                const diffColor = diff == null ? '' : diff > 5 ? '#10b981' : diff < -5 ? '#ef4444' : '#94a3b8';
+                const diffLabel = diff == null ? '' : `${diff >= 0 ? '+' : ''}${diff}% vs est.`;
+                return `<div class="flex justify-between items-center py-2 ${i < comps.length-1 ? 'border-b border-slate-100 dark:border-slate-700' : ''}">
                     <div>
                         <div class="text-[11px] font-black text-slate-700 dark:text-slate-200">${fmt2.format(c.median_home_value)}</div>
                         <div class="text-[10px] text-slate-400">Income ${fmt2.format(c.median_income)} · ${c.dist_coast_km} km coast</div>
                     </div>
-                    <div class="text-[10px] font-bold text-slate-400">${Math.round(c.pop_density).toLocaleString()} /km²</div>
-                </div>`).join('');
+                    <div class="text-right">
+                        <div class="text-[10px] font-black" style="color:${diffColor}">${diffLabel}</div>
+                        <div class="text-[10px] text-slate-400">${Math.round(c.pop_density).toLocaleString()} /km²</div>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         // --- PROPERTY TAX & WALK SCORE ---
@@ -2114,7 +2122,8 @@
         function renderMarketTemp(temp) {
             const badge = document.getElementById('ana-market-temp-badge');
             badge.style.display = 'inline';
-            badge.textContent   = temp.label + (temp.trend_pct ? ` +${temp.trend_pct}%` : '');
+            const sign = temp.trend_pct >= 0 ? '+' : '';
+            badge.textContent   = temp.label + (temp.trend_pct != null ? ` ${sign}${temp.trend_pct}% 2yr` : '');
             badge.style.background = temp.color + '25';
             badge.style.color      = temp.color;
         }
