@@ -425,6 +425,12 @@ _COUNTY_FACTORS = {
     'Riverside': 1.09, 'San Bernardino': 1.08, 'Imperial': 1.06,
     # Other
     'Lake': 1.04, 'Colusa': 1.03, 'Sutter': 1.05,
+    # Mountain / far north — added for coverage (#11)
+    'Trinity': 1.02, 'Del Norte': 1.02, 'Lassen': 1.03, 'Modoc': 1.01,
+    'Mono': 1.04, 'Inyo': 1.03, 'Alpine': 1.02,
+    # Central foothills
+    'San Benito': 1.05, 'Calaveras': 1.05, 'Tuolumne': 1.04,
+    'Mariposa': 1.04, 'Plumas': 1.03, 'Sierra': 1.02,
 }
 
 def _extract_county(address: str) -> str:
@@ -694,25 +700,41 @@ def predict():
         p_base = float(np.exp(_ensemble_predict(pd.DataFrame([input_dict]))))
 
         # KNN neighborhood comps — geographically constrained
-        # Only consider census tracts within 35 km so we never pull Sacramento comps
-        # for a Santa Monica query. Fall back to global KNN only in sparse rural areas.
+        # Change #1: Adaptive radius — tighter in dense urban areas for cleaner comps
+        # Change #2: Distance-weighted KNN — nearer tracts count more than far ones
+        # Change #3: Micro-local 5km signal as supplemental anchor
         q_vals  = {'median_income': _inc, 'median_house_age': _age, 'pop_density': _den,
                    'dist_coast_km': dist_coast, 'dist_city_km': dist_city}
         q_scale = _knn_scaler.transform(pd.DataFrame([q_vals])[comp_features])
 
-        _dists_m     = _census_centroids_proj.distance(p_m)
-        _nearby_mask = (_dists_m < 35_000).values
+        _dists_m  = _census_centroids_proj.distance(p_m)
+        _knn_radius = 12_000 if _den > 3_000 else 35_000   # #1 adaptive radius
+        _nearby_mask = (_dists_m < _knn_radius).values
         _n_nearby    = int(_nearby_mask.sum())
 
+        p_micro = None  # #3 micro-local signal
+        _micro_mask = (_dists_m < 5_000).values
+        _n_micro = int(_micro_mask.sum())
+        if _n_micro >= 3:
+            _micro_vals = census_gdf.iloc[np.where(_micro_mask)[0]]['median_home_value'].dropna()
+            if len(_micro_vals):
+                p_micro = float(_micro_vals.mean())
+
         if _n_nearby >= 7:
-            _nb_idx     = np.where(_nearby_mask)[0]
-            _nb_clean   = census_gdf.iloc[_nb_idx][comp_features].fillna(census_gdf[comp_features].mean())
-            _nb_scaled  = _knn_scaler.transform(_nb_clean)
-            _nb_knn     = NearestNeighbors(n_neighbors=min(7, _n_nearby), algorithm='ball_tree').fit(_nb_scaled)
-            _, _nb_idxs = _nb_knn.kneighbors(q_scale)
-            p_knn       = float(np.mean([census_gdf.iloc[_nb_idx[i]]['median_home_value'] for i in _nb_idxs[0]]))
-            log.info(f"Geo-KNN ({_n_nearby} nearby tracts): p_knn=${p_knn:,.0f}")
+            _nb_idx    = np.where(_nearby_mask)[0]
+            _nb_clean  = census_gdf.iloc[_nb_idx][comp_features].fillna(census_gdf[comp_features].mean())
+            _nb_scaled = _knn_scaler.transform(_nb_clean)
+            _nb_knn    = NearestNeighbors(n_neighbors=min(7, _n_nearby), algorithm='ball_tree').fit(_nb_scaled)
+            _nb_dists, _nb_idxs = _nb_knn.kneighbors(q_scale)
+            # #2 distance-weighted mean (inverse distance, avoid div-by-zero)
+            _geo_dists = np.array([float(_dists_m.iloc[_nb_idx[i]]) + 1 for i in _nb_idxs[0]])
+            _wts       = 1.0 / _geo_dists
+            _wts      /= _wts.sum()
+            p_knn      = float(np.sum([census_gdf.iloc[_nb_idx[i]]['median_home_value'] * _wts[j]
+                                       for j, i in enumerate(_nb_idxs[0])]))
+            log.info(f"Geo-KNN ({_n_nearby} tracts, r={_knn_radius//1000}km, weighted): p_knn=${p_knn:,.0f}")
         else:
+            # #16 sparse area: fewer than 3 nearby → rely less on KNN
             _, _g_idxs = knn_model.kneighbors(q_scale, n_neighbors=7)
             p_knn      = float(np.mean([census_gdf.iloc[i]['median_home_value'] for i in _g_idxs[0]]))
             log.info(f"Sparse area — global KNN: p_knn=${p_knn:,.0f}")
@@ -722,13 +744,21 @@ def predict():
 
         # Dynamic blend weights — ML gets more weight when it agrees with the local anchor;
         # KNN weight collapses when it is a big outlier vs the tract anchor.
+        # Change #16: sparse-area KNN weight further reduced when < 7 nearby tracts
         _base_tract_ratio = abs(p_base - tract_anchor) / max(tract_anchor, 1.0)
         _knn_tract_ratio  = abs(p_knn  - tract_anchor) / max(tract_anchor, 1.0)
-        w_knn   = 0.05 if _knn_tract_ratio  > 0.40 else 0.20
+        _knn_w_max = 0.10 if _n_nearby < 7 else 0.20   # #16 sparse penalty
+        w_knn   = 0.05 if _knn_tract_ratio > 0.40 else _knn_w_max
         w_ml    = round(max(0.20, min(0.45, 0.30 + 0.12 * (1.0 - min(1.0, _base_tract_ratio * 2)))), 3)
+        # Change #3: blend micro-local signal into tract anchor when available
+        _tract_blend = tract_anchor
+        if p_micro is not None:
+            _micro_ratio = abs(p_micro - tract_anchor) / max(tract_anchor, 1.0)
+            if _micro_ratio < 0.50:   # only if micro agrees reasonably with tract
+                _tract_blend = 0.70 * tract_anchor + 0.30 * p_micro
         w_tract = round(1.0 - w_ml - w_knn, 3)
-        p_stacked = p_base * w_ml + p_knn * w_knn + tract_anchor * w_tract
-        log.info(f"Blend: ML({w_ml:.0%})={p_base:.0f} KNN({w_knn:.0%})={p_knn:.0f} Tract({w_tract:.0%})={tract_anchor:.0f}")
+        p_stacked = p_base * w_ml + p_knn * w_knn + _tract_blend * w_tract
+        log.info(f"Blend: ML({w_ml:.0%})={p_base:.0f} KNN({w_knn:.0%})={p_knn:.0f} Tract({w_tract:.0%})={_tract_blend:.0f}")
 
         # ── County-level appreciation (CAR Q4 2024 vs ACS 2020) ─────────────
         # Look up the county from the geocoded address first; fall back to a
@@ -759,68 +789,126 @@ def predict():
         size_adj = (u_sqft / CA_AVG_SQFT) ** sqft_exp - 1.0
 
         # 2. Bedrooms vs 3bd baseline
-        bed_adj = max(-0.15, min(0.18, (u_beds - 3.0) * 0.028))
+        # Change #4: price-tier scaled premium — luxury buyers discount per-bed less
+        _bed_coeff = 0.020 if tract_anchor > 1_500_000 else 0.024 if tract_anchor > 800_000 else 0.028
+        bed_adj = max(-0.15, min(0.18, (u_beds - 3.0) * _bed_coeff))
 
         # 3. Bathrooms vs 2ba baseline
-        bath_adj = max(-0.08, min(0.12, (u_baths - 2.0) * 0.018))
+        # Change #5: half-bath gets smaller increment; excess baths diminish past 2x beds
+        _bath_delta = u_baths - 2.0
+        _bath_coeff = 0.010 if (u_baths % 1 == 0.5) else 0.018
+        _bath_excess_penalty = max(0.0, u_baths - max(2.0, u_beds * 1.5)) * 0.005
+        bath_adj = max(-0.08, min(0.12, _bath_delta * _bath_coeff - _bath_excess_penalty))
 
         # 4. Condition
         cond_adj = {'Fixer': -0.13, 'Avg': 0.0, 'Good': 0.07, 'Mint': 0.15}[u_cond]
 
+        # 8. School quality proxy — computed early because age_adj vintage uses it
+        _inc_pct = _percentile_of(_income_sorted, _inc)
+
         # 5. Housing age — use user-supplied year_built if provided, else tract median
+        # Change #6: pre-1940 vintage premium in high-income areas
+        # Change #7: sharper new-construction tiers
         if u_year_built:
             house_age = max(0, 2025 - u_year_built)
         else:
             house_age = float(t_data['median_house_age'])
-        if   house_age <  5:  age_adj =  0.06   # brand-new premium
+        if   house_age <= 2:  age_adj =  0.09   # #7 brand-new premium (<2 yr)
+        elif house_age <= 5:  age_adj =  0.07
         elif house_age < 10:  age_adj =  0.04
         elif house_age < 20:  age_adj =  0.02
         elif house_age < 35:  age_adj =  0.00
         elif house_age < 55:  age_adj = -0.02
         elif house_age < 75:  age_adj = -0.04
-        else:                 age_adj =  0.01   # vintage premium in older neighborhoods
+        elif house_age < 85:  age_adj =  0.00   # transitional
+        else:                 age_adj =  0.03 if _inc_pct >= 60 else 0.01   # #6 vintage in good areas
 
         # 6. Lot size — larger lots command a premium; effect dampens in dense urban areas
+        # Change #9: coastal lots get extra amplifier
         CA_AVG_LOT  = 6_098.0  # ~0.14 acres, CA residential median
         _lot_impact = max(0.2, 1.0 - min(0.8, _den / 10_000))  # low in dense areas
-        lot_adj = max(-0.08, min(0.12, (u_lot_sqft / CA_AVG_LOT - 1.0) * 0.15 * _lot_impact))
+        _coastal_lot_amp = 1.5 if dist_coast < 5 else 1.0       # #9 oceanfront/near-coast boost
+        lot_adj = max(-0.08, min(0.14,
+            (u_lot_sqft / CA_AVG_LOT - 1.0) * 0.15 * _lot_impact * _coastal_lot_amp))
 
-        # 7. Upgrades — each premium feature adds to value, capped at 12% combined
-        _UPGRADE_ADJ = {'pool': 0.04, 'solar': 0.02, 'new_kitchen': 0.03,
-                        'garage': 0.03, 'new_roof': 0.015, 'renovated': 0.05}
-        upgrades_adj = min(0.12, sum(_UPGRADE_ADJ.get(u, 0) for u in u_upgrades))
+        # 7. Upgrades — change #10: pool/solar premiums scale with price tier
+        _tier_mult = 1.4 if tract_anchor > 800_000 else 0.8 if tract_anchor < 350_000 else 1.0
+        _UPGRADE_ADJ = {
+            'pool':        0.04 * _tier_mult,
+            'solar':       0.025,
+            'new_kitchen': 0.03,
+            'garage':      0.03,
+            'new_roof':    0.015,
+            'renovated':   0.05,
+        }
+        upgrades_adj = min(0.14, sum(_UPGRADE_ADJ.get(u, 0) for u in u_upgrades))
 
         # 8. School quality proxy — income percentile predicts school district quality in CA
-        _inc_pct = _percentile_of(_income_sorted, _inc)
-        if   _inc_pct >= 85: school_adj =  0.06
-        elif _inc_pct >= 65: school_adj =  0.03
-        elif _inc_pct >= 40: school_adj =  0.00
+        if   _inc_pct >= 90: school_adj =  0.07   # finer top-band
+        elif _inc_pct >= 75: school_adj =  0.04
+        elif _inc_pct >= 55: school_adj =  0.01
+        elif _inc_pct >= 35: school_adj =  0.00
         elif _inc_pct >= 20: school_adj = -0.02
         else:                school_adj = -0.04
 
-        # 9. Environmental risk — modest discount for high fire or flood exposure
-        _fire_risk  = dist_coast > 60 and _den < 600   # inland, sparse = elevated fire risk
-        _flood_risk = dist_coast < 0.8                  # right on the coast = flood zone
-        env_adj = -0.03 if _fire_risk else (-0.015 if _flood_risk else 0.0)
+        # 9. Environmental risk
+        # Change #13: three-band fire risk (severe / moderate / low)
+        _fire_risk    = dist_coast > 60 and _den < 600   # severe inland sparse
+        _mod_fire     = (40 < dist_coast <= 60) and _den < 1_000  # #13 moderate band
+        _flood_risk   = dist_coast < 0.8                           # coastal flood zone
+        if _fire_risk:        env_adj = -0.03
+        elif _mod_fire:       env_adj = -0.015   # #13
+        elif _flood_risk:     env_adj = -0.015
+        else:                 env_adj =  0.0
 
-        # Total property adjustment — hard cap ±35%
-        total_adj = max(-0.35, min(0.35,
+        # Change #12: gentrification premium — high income + dense + younger housing
+        _gentrify_adj = 0.0
+        if _inc_pct >= 70 and _den > 2_000 and house_age < 20:
+            _gentrify_adj = 0.02
+        elif _inc_pct >= 80 and _den > 4_000:
+            _gentrify_adj = 0.015
+
+        # Change #17: occupancy pressure discount — over-crowded tracts trend down
+        _occ_pressure = _pop / max(1.0, _hu)
+        _occ_adj = -0.01 if _occ_pressure > 3.5 else 0.0
+
+        # Change #20: proximity premium for ultra-luxury micro-zones
+        # Beverly Hills core, Atherton, Malibu, Bel Air, Palo Alto
+        _luxury_zones = [
+            (34.073, -118.400, 3.5),   # Beverly Hills
+            (37.463, -122.197, 4.0),   # Atherton
+            (34.037, -118.705, 5.0),   # Malibu (wider radius)
+            (34.096, -118.455, 4.0),   # Bel Air
+            (37.441, -122.163, 3.5),   # Palo Alto
+        ]
+        _lux_adj = 0.0
+        for _zlat, _zlon, _zrad_deg in _luxury_zones:
+            _zdist = ((lat - _zlat)**2 + (lon - _zlon)**2)**0.5
+            if _zdist < _zrad_deg / 111:   # ~1 deg lat = 111 km
+                _lux_adj = max(_lux_adj, 0.04 * (1.0 - _zdist * 111 / _zrad_deg))
+
+        # Total property adjustment — hard cap ±38%
+        total_adj = max(-0.38, min(0.38,
             size_adj + bed_adj + bath_adj + cond_adj + age_adj +
-            lot_adj + upgrades_adj + school_adj + env_adj))
+            lot_adj + upgrades_adj + school_adj + env_adj +
+            _gentrify_adj + _occ_adj + _lux_adj))
 
         # ── Model signal — blended ML insight, dynamically dampened ─────────
-        # Cap expands when ML and tract agree: up to ±14% when aligned, down to ±6%
-        # when they diverge. Prevents the model from wildly overriding local prices
-        # while still allowing meaningful signal in well-calibrated markets.
-        _ml_cap      = max(0.06, min(0.14, 0.14 * (1.0 - min(1.0, _base_tract_ratio))))
-        raw_signal   = (p_stacked - tract_anchor) * 0.15
-        model_signal = max(-market_base * _ml_cap, min(market_base * _ml_cap, raw_signal))
+        # Change #14: tanh (sigmoid) dampening instead of hard linear clip.
+        # Produces smoother, less jumpy corrections when ML diverges from tract.
+        # Change #15: cap range expanded slightly (±16%) for high-confidence cases.
+        _ml_cap      = max(0.06, min(0.16, 0.16 * (1.0 - min(1.0, _base_tract_ratio))))
+        raw_signal   = (p_stacked - _tract_blend) * 0.15
+        # tanh squashes large signals smoothly rather than hard-capping them
+        _sig_norm    = raw_signal / max(market_base * _ml_cap, 1.0)
+        model_signal = float(np.tanh(_sig_norm) * market_base * _ml_cap)
 
         f_price = (market_base * (1.0 + total_adj)) + model_signal
 
-        # Hard ceiling: no property can exceed 2.2x the neighborhood's current
-        # market price. Prevents KNN or meta-model outliers from escaping.
-        f_price = min(f_price, market_base * 2.2)
+        # Change #19: tighter luxury ceiling — 1.75x for neighbourhoods > $2M
+        # (was flat 2.2x for all price tiers, allowing unrealistic outliers)
+        _price_ceiling = 1.75 if market_base > 2_000_000 else 2.0 if market_base > 1_000_000 else 2.2
+        f_price = min(f_price, market_base * _price_ceiling)
         f_price = max(150_000.0, min(15_000_000.0, float(f_price)))
 
         # ── RentCast AVM — live comparable-sales signal ───────────────────────
