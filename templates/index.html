@@ -1456,7 +1456,7 @@
 
                     // Render investment score
                     if (data.neighborhood && data.contributions) {
-                        renderInvestmentScore(data.neighborhood, data.contributions);
+                        renderInvestmentScore(data.neighborhood, data.contributions, data.annual_rate, data.market_temp);
                     }
 
                     if (data.neighborhood) renderNeighborhoodCard(data.neighborhood, address, data.valuation.estimated_value, formatter);
@@ -1640,7 +1640,7 @@
                 </div>`;
         }
 
-        function renderInvestmentScore(nb, contributions) {
+        function renderInvestmentScore(nb, contributions, annualRate, marketTemp) {
             let score = 50;
 
             // Location: closer to city = better
@@ -1660,6 +1660,15 @@
             // Market tier liquidity
             const priceP = nb.price_percentile || 50;
             score += priceP >= 75 ? 10 : priceP >= 50 ? 7 : priceP >= 25 ? 4 : 2;
+
+            // Annual appreciation rate — higher growth = better investment
+            const rate = annualRate || 0;
+            score += rate >= 5 ? 9 : rate >= 3.5 ? 6 : rate >= 2 ? 3 : rate >= 0 ? 0 : -4;
+
+            // Market temperature signal
+            const mLabel = (marketTemp || {}).label || '';
+            score += mLabel.startsWith('Hot') ? 7 : mLabel.startsWith('Warm') ? 4 :
+                     mLabel.startsWith('Stable') ? 0 : -4;
 
             score = Math.round(Math.max(18, Math.min(96, score)));
 
@@ -2573,7 +2582,7 @@
             const down = (parseFloat(document.getElementById('ana-down').value)/100) * price;
             const rate = (parseFloat(document.getElementById('ana-rate').value)/100)/12;
 
-            const n = 360;
+            const n = (_tcTerm || 30) * 12;
             let monthlyP = 0;
             if (price > 0 && rate > 0) {
                  monthlyP = (price - down) * (rate * Math.pow(1+rate, n)) / (Math.pow(1+rate, n)-1);
@@ -2602,7 +2611,7 @@
                 const insMo      = Math.round(price * 0.004 / 12);   // ~0.4% homeowners ins
                 const pmi        = down / price < 0.20 ? Math.round(loanAmt * 0.008 / 12) : 0;
                 const piti       = Math.round(monthlyP) + taxMo + insMo + pmi;
-                const totalInt   = Math.round(monthlyP * 360 - loanAmt);
+                const totalInt   = Math.round(monthlyP * n - loanAmt);
 
                 // Break-even: month when cumulative buy cost < cumulative rent cost
                 let breakEvenYr = '> 30 yrs';
